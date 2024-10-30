@@ -7,7 +7,7 @@ node_modules
 package-lock.json
 dev.env
 
-.vscode
+
 .idea
 headers.txt
 

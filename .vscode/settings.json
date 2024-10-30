@@ -1,0 +1,11 @@
+{
+  "workbench.colorCustomizations": {
+      "activityBar.background":"#FF5B00",        //側邊欄的背景
+      "activityBar.activeBackground":"#3330E4",    //側邊欄的背景（正在選取的）
+      "activityBar.activeBorder":"#ffffff",        //側邊欄邊框（正在選取的）
+      "activityBar.foreground":"#ffffff",          //側邊欄的字（正在選取的）
+      "activityBar.inactiveForeground":"#06060a99",//側邊欄的字（沒被選取的）
+      "activityBarBadge.background":"#ff0808",     //側邊欄變動標示的背景
+      "activityBarBadge.foreground":"#ffffff",     //側邊欄變動標示的文字
+  }
+}
