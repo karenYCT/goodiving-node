@@ -19,6 +19,11 @@ app.use(express.urlencoded({ extended: true }));
 
 // app.use自己import的檔案跟導入的變數名
 app.use("/products", products);
+//app.use("/divesite", divesite);
+//app.use("/diary", diary);
+//app.use("/lesson", lesson);
+//app.use("/member", member);
+//app.use("/blog", blog);
 
 // 監聽server 放在最尾部
 const port = process.env.WEB_PORT || 3002;
