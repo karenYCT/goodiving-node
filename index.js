@@ -1,22 +1,24 @@
 import express from 'express';
 import cors from 'cors';
 import db from './utils/connect-mysql.js';
+import divesite from "./routes/divesite.js";
 
 const app = express();
-app.use(cors());
-app.use(express.json());
+const corsOptions = {   
+    credentials: true,
+    origin: (origin, callback) => {
+      // console.log({ origin });
+    callback(null, true);
+    },
+};
+
 
 
 // ************* 頂層的 middlewares *************
 app.use(cors());
-const corsOptions = {
-  credentials: true,
-  origin: (origin, callback) => {
-    // console.log({ origin });
-    callback(null, true);
-  },
-};
+app.use(express.json());
 app.use(express.urlencoded({extended:true}));
+app.use("/api/divesite", divesite);
 // ************* 自訂的頂層 middleware *************
 
 

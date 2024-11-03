@@ -4,9 +4,9 @@ import db from "../utils/connect-mysql.js";
 const router = express.Router();
 
 // 獲取特定地區的所有潛點
-router.get("/api/siteinfo/location/:locationId", async (req, res) => {
+router.get("/api/siteinfo/region/:regionId", async (req, res) => {
   try {
-    const locationId = req.params.locationId;
+    const regionId = req.params.regionId;
     
     const sql = `
       SELECT 
@@ -20,18 +20,18 @@ router.get("/api/siteinfo/location/:locationId", async (req, res) => {
         l.level_name,
         m.method_id,
         m.method_name,
-        sl.location_id,
-        sl.location_name,
-        sl.location_english
+        sl.region_id,
+        sl.region_name,
+        sl.region_english
       FROM site_info si
       JOIN level l ON si.level_id = l.level_id
       JOIN method m ON si.method_id = m.method_id
-      JOIN site_location sl ON si.location_id = sl.location_id
-      WHERE sl.location_id = ?
+      JOIN site_region sl ON si.region_id = sl.region_id
+      WHERE sl.region_id = ?
       ORDER BY si.site_id
     `;
 
-    const [sites] = await db.query(sql, [locationId]);
+    const [sites] = await db.query(sql, [regionId]);
 
     if (sites.length === 0) {
       return res.status(404).json({
