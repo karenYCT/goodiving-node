@@ -3,10 +3,10 @@ import cors from "cors";
 import authRoutes from './routes/auth.js';
 import memberProfile from "./routes/profile.js";
 import bcrypt from "bcrypt";
+import session from "express-session";
 
 
 const app = express();
-const urlencodedParser = express.urlencoded({ extended: true });
 
 // ************* 頂層的 middlewares *************
 const corsOptions = {
@@ -18,7 +18,19 @@ const corsOptions = {
   };
   app.use(cors(corsOptions));
 
-  app.use(express.urlencodedParser({extended: true}));
+  app.use(express.urlencoded({ extended: true }));
+
+  app.use(
+    session({
+        // 新用戶沒有使用到 session 物件時不會建立 session 和發送 cookie 
+        saveUninitialized: false, 
+        resave: false, 
+        secret: "雜湊 session id 的字串", 
+        cookie: {
+            maxAge: 1200_000, // 20分鐘，單位毫秒 
+        },
+    }) 
+  );
 
 // ************* 自訂的頂層 middleware *************
 
