@@ -2,8 +2,8 @@ import express from "express";
 import cors from "cors";
 import authRoutes from './routes/auth.js';
 import memberProfile from "./routes/profile.js";
-import bcrypt from "bcrypt";
-import session from "express-session";
+import jwt from "jsonwebtoken";
+
 
 
 const app = express();
@@ -21,25 +21,27 @@ const corsOptions = {
 
   app.use(express.urlencoded({ extended: true }));
   app.use(express.json());
-  app.use(
-    session({
-        // 新用戶沒有使用到 session 物件時不會建立 session 和發送 cookie 
-        saveUninitialized: false, 
-        resave: false, 
-        secret: "雜湊 session id 的字串", 
-        cookie: {
-            maxAge: 1200_000, // 20分鐘，單位毫秒 
-        },
-    }) 
-  );
+  
 
 // ************* 自訂的頂層 middleware *************
 
+app.use((req, res, next) => {
+    let auth = req.get("Authorization");
+  if (auth && auth.indexOf("Bearer " === 0)){
+    let token = auth.slice(7);
+    try{
+      req.user_jwt = jwt.verify(token, process.env.JWT_KEY)
+    }catch(ex){
+      console.log(ex)
+    }
+  }
+next();
+})
 
 
 // 路由定義, callback 為路由處理器
 // 路由的兩個條件: 1. HTTP method; 2. 路徑
-app.get('/', (req, res)=>{
+app.get('/', (req, res,)=>{
     res.send('Hello World!');
 })
 
@@ -47,22 +49,6 @@ app.use('/auth', authRoutes);
 app.use('/profile', memberProfile);
 
 
-// 製造hash的路由
-app.get("/bcrypt",async(req, res)=>{
-    const pw = "123456";
-    const hash = await bcrypt.hash(pw,12)
-
-    res.send(hash);
-})
-
-// 比對hash的路由
-app.get("/bcrypt2", async(req, res)=>{
-    const hash = "$2b$12$7qAgMibqz6p4pkryTTG9lOUlR6rIzg6g1AIlAuHMjSTxEOwRDL8C2"
-    const pw = "123456";
-    const result = await bcrypt.compare(pw, hash);  // result 是 boolean
-    
-    res.json({result});
-})
 
 
 // *************  靜態內容資料夾e ************* 

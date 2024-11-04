@@ -3,9 +3,10 @@
 import express from 'express';
 import db from '../utils/connect-mysql.js';
 import upload from "../utils/upload.js";
-import { Schema, z } from "zod";
+import { z } from "zod";
 import moment from 'moment';
 import bcrypt from 'bcrypt';
+import jwt from "jsonwebtoken";
 
 
 const router = express.Router();
@@ -19,6 +20,7 @@ router.post('/login', upload.none(), async(req, res) =>{
         code: 0,
         error: "",
         bodyData: req.body,
+        data:{},
     }
     let {email, password} = req.body;
 
@@ -47,20 +49,25 @@ router.post('/login', upload.none(), async(req, res) =>{
         output.error="帳號或密碼錯誤"
         return res.json(output);
     }
-    // 等註冊使用加密的密碼時，要改成：
-    
-    //if (!result) {...}
 
 
+    // 如果帳號密碼都正確，可以開始生成 Token
+    const payload = {
+        user_id: rows[0].user_id,
+        user_full_name: rows[0].user_full_name,
+        role_id: rows[0].role_id,
+    }
 
-    // 如果帳號密碼都正確
-    req.session.user = {
+    console.log("process.env.JWT_KEY是:", process.env.JWT_KEY)
+    const token = jwt.sign(payload, process.env.JWT_KEY)
+
+    output.data={
         user_id: rows[0].user_id,
         user_email: rows[0].user_email,
         user_full_name: rows[0].user_full_name,
         role_id: rows[0].role_id,
-    };
-    console.log(req.session);
+        token,
+    }
 
     output.success = true;
     output.message = "登入成功";
