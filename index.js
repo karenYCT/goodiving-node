@@ -20,7 +20,7 @@ const corsOptions = {
   app.use(cors(corsOptions));
 
   app.use(express.urlencoded({ extended: true }));
-
+  app.use(express.json());
   app.use(
     session({
         // 新用戶沒有使用到 session 物件時不會建立 session 和發送 cookie 
