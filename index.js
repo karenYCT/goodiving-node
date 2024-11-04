@@ -6,7 +6,7 @@ import bcrypt from "bcrypt";
 
 
 const app = express();
-const urlencodedParser = express.urlencoded({ extended: true });
+
 
 // ************* 頂層的 middlewares *************
 const corsOptions = {
@@ -18,7 +18,7 @@ const corsOptions = {
   };
   app.use(cors(corsOptions));
 
-  app.use(express.urlencodedParser({extended: true}));
+  app.use(express.urlencoded({ extended: true }));
 
 // ************* 自訂的頂層 middleware *************
 

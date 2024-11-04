@@ -2,7 +2,7 @@
 
 import express from 'express';
 import db from '../utils/connect-mysql.js';
-import upload from '../utils/upload.js';
+import upload from "../utils/upload.js";
 
 const router = express.Router();
 
@@ -10,7 +10,7 @@ const router = express.Router();
 
 
 // 登入的邏輯
-router.post('/login',upload.none() async(req, res) =>{
+router.post('/login',upload.none(), async(req, res) =>{
     //回應給前端的訊息
     const output = {
         success: false,
