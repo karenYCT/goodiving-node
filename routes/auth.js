@@ -32,7 +32,7 @@ router.post('/login', upload.none(), async(req, res) =>{
     
 
     // 帳號是不是對的(是否有找到帳號)
-    const sqlFindEmail = `SELECT * FROM user WHERE user_email = ?`
+    const sqlFindEmail = SELECT * FROM user WHERE user_email = ?
     const [rows] = await db.query(sqlFindEmail, [email]);
     console.log("看一下這筆資料rows[0]："+JSON.stringify(rows[0], null, 2));
     if (!rows.length){
@@ -88,8 +88,11 @@ router.post('/register', async(req, res) => {
     const registerRequestSchema = z.object({
         email: z.string().email({ message: "請輸入正確的Email格式" }).min(1, { message: "Email 為必填欄位" } ),
         name: z.string().min(2, { message: "請輸入正確的姓名" } ),
-        password: z.string().min(8, { message: "密碼至少需有 8 個字元"}).regex(/^(?=.*[A-Za-z])(?=.*\d)[A-Za-z\d]{8,}$/, { message: "密碼須包含英文及數字" }),
-        phone: z.string().regex(/^09\d{2}-?\d{3}-?\d{3}$/, { message: "請輸入正確的手機號碼" }),
+        password: z.string().min(8, { message: "密碼須至少8字元，包含英文及數字"}).regex(/^(?=.*[A-Za-z])(?=.*\d)[A-Za-z\d]{8,}$/, { message: "密碼須至少8字元，包含英文及數字" }),
+        phone: z.string().regex(/^09\d{2}-?\d{3}-?\d{3}$/, { message: "請輸入正確的手機格式" }),
+        birthday: z.string()
+        .min(1, { message: "生日為必填欄位" })
+        .refine(value => value !== null, { message: "生日為必填欄位" })
     })
 
     const zodResult = registerRequestSchema.safeParse({email, name, password, birthday, phone});
@@ -106,7 +109,7 @@ router.post('/register', async(req, res) => {
     }
 
     // email檢查
-    const sqlFindEmail = `SELECT * FROM user WHERE user_email = ?`
+    const sqlFindEmail = SELECT * FROM user WHERE user_email = ?
     const [rows] = await db.query(sqlFindEmail, [email]);
     if (rows.length > 0){
         return res.json({ success: false, message: "email已經被註冊過了" })
