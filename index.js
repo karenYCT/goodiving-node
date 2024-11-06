@@ -6,7 +6,9 @@ import blog from "./routes/blog.js";
 import message from "./routes/message.js";
 import authRoutes from './routes/auth.js';
 import memberProfile from "./routes/profile.js";
+import divesite from "./routes/divesite.js";
 import jwt from "jsonwebtoken";
+
 
 // ************* 頂層的 middlewares *************
 const app = express();
@@ -41,7 +43,7 @@ next();
 
 // app.use自己import的檔案跟導入的變數名
 app.use("/products", products);
-//app.use("/divesite", divesite);
+app.use("/divesite", divesite);
 //app.use("/diary", diary);
 //app.use("/lesson", lesson);
 //app.use("/member", member);
