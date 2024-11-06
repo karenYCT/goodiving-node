@@ -1,6 +1,7 @@
 import express from "express";
 import cors from "cors";
 import products from "./routes/products.js";
+import cart from "./routes/cart.js";
 import db from "./utils/connect-mysql.js";
 import blog from "./routes/blog.js";
 import message from "./routes/message.js";
@@ -37,6 +38,7 @@ app.use((req, res, next) => {
 
 // app.use自己import的檔案跟導入的變數名
 app.use("/products", products);
+app.use("/cart", cart);
 //app.use("/divesite", divesite);
 //app.use("/diary", diary);
 //app.use("/lesson", lesson);
