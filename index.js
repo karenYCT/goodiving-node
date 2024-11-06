@@ -3,7 +3,8 @@ import cors from "cors";
 import products from "./routes/products.js";
 import db from './utils/connect-mysql.js';
 import blog from "./routes/blog.js";
-import message from "./routes/message.js";
+import comment from "./routes/comment.js";
+
 
 // ************* 頂層的 middlewares *************
 const app = express();
@@ -28,7 +29,7 @@ app.use("/products", products);
 //app.use("/lesson", lesson);
 //app.use("/member", member);
 app.use("/api/blog", blog);
-app.use("/api/message", message);
+app.use("/api/comment", comment);
 
 
 // 測試路由
