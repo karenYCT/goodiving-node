@@ -80,4 +80,15 @@ router.get("/:site_id", async (req, res) => {
     }
   });
 
+// 取得潛水方法
+router.get("/method", async (req, res) => {
+  try{
+    const sql = `SELECT * FROM method ORDER BY method_id`;
+    const [rows] = await db.query(sql);
+    res.json(rows);
+  }catch(error){
+    res.status(500).json({ error: error.message });
+  }
+});
+
 export default router;
