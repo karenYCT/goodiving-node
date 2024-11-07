@@ -1,6 +1,5 @@
 import express from "express";
 import db from "../utils/connect-sql.js";
-
 const router = express.Router();
 
 // 取得所有產品資料
@@ -41,7 +40,7 @@ router.get("/", async (req, res) => {
   }
 
   try {
-    const [rows] = await db.query(sql, params);
+    const [rows] = await db.execute(sql, params);
     res.json(rows);
   } catch (err) {
     console.log(err);
@@ -56,17 +55,17 @@ router.get("/:id", async (req, res) => {
     // 查詢產品基本資料
     const sql =
       "SELECT  title, description, price FROM product_list WHERE product_id = ?";
-    const [productRows] = await db.query(sql, [id]);
+    const [productRows] = await db.execute(sql, [id]);
     const product = productRows[0];
 
     // 查詢產品變體資料
     const sql1 =
-      "SELECT size, color, stock FROM product_variants WHERE product_id = ?";
-    const [variants] = await db.query(sql1, [id]);
+      "SELECT product_variant_id id ,size, color, stock FROM product_variants WHERE product_id = ?";
+    const [variants] = await db.execute(sql1, [id]);
 
     // 查詢產品照片
     const sql2 = "SELECT img_url FROM product_images WHERE product_id = ?";
-    const [images] = await db.query(sql2, [id]);
+    const [images] = await db.execute(sql2, [id]);
 
     res.json({ ...product, variants, images });
   } catch (err) {
@@ -74,4 +73,5 @@ router.get("/:id", async (req, res) => {
     res.status(500).json({ error: "Internal Server Error" });
   }
 });
+
 export default router;

@@ -9,6 +9,7 @@ import memberProfile from "./routes/profile.js";
 import divesite from "./routes/divesite.js";
 import jwt from "jsonwebtoken";
 import comment from "./routes/comment.js";
+import cart from "./routes/cart.js";
 
 // ************* 頂層的 middlewares *************
 const app = express();
@@ -48,6 +49,7 @@ app.use("/api/message", message);
 app.use("/auth", authRoutes);
 app.use("/profile", memberProfile);
 app.use("/api/comment", comment);
+app.use("/cart", cart);
 
 // 測試路由
 app.get("/test", async (req, res) => {
