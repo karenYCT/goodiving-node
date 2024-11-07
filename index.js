@@ -1,13 +1,13 @@
 import express from "express";
 import cors from "cors";
 import products from "./routes/products.js";
-import cart from "./routes/cart.js";
 import db from "./utils/connect-mysql.js";
 import blog from "./routes/blog.js";
 import message from "./routes/message.js";
 import authRoutes from "./routes/auth.js";
 import memberProfile from "./routes/profile.js";
 import jwt from "jsonwebtoken";
+import cart from "./routes/cart.js";
 
 // ************* 頂層的 middlewares *************
 const app = express();
@@ -38,7 +38,6 @@ app.use((req, res, next) => {
 
 // app.use自己import的檔案跟導入的變數名
 app.use("/products", products);
-app.use("/cart", cart);
 //app.use("/divesite", divesite);
 //app.use("/diary", diary);
 //app.use("/lesson", lesson);
@@ -47,6 +46,7 @@ app.use("/api/blog", blog);
 app.use("/api/message", message);
 app.use("/auth", authRoutes);
 app.use("/profile", memberProfile);
+app.use("/cart", cart);
 
 // 測試路由
 app.get("/test", async (req, res) => {
