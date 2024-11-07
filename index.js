@@ -10,7 +10,6 @@ import divesite from "./routes/divesite.js";
 import jwt from "jsonwebtoken";
 import comment from "./routes/comment.js";
 
-
 // ************* 頂層的 middlewares *************
 const app = express();
 const corsOptions = {
@@ -45,14 +44,10 @@ app.use("/divesite", divesite);
 //app.use("/lesson", lesson);
 //app.use("/member", member);
 app.use("/api/blog", blog);
-<<<<<<< HEAD
 app.use("/api/message", message);
 app.use("/auth", authRoutes);
 app.use("/profile", memberProfile);
-=======
 app.use("/api/comment", comment);
-
->>>>>>> fanny
 
 // 測試路由
 app.get("/test", async (req, res) => {
