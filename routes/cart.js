@@ -125,4 +125,52 @@ router.post("/add", async (req, res) => {
   }
 });
 
+// 更新購物車商品數量
+router.put("/updateQuantity", async (req, res) => {
+  const { vid, quantity } = req.body;
+
+  if (!vid || !Number.isInteger(quantity) || quantity < 0) {
+    return res.status(400).json({ message: "Invalid input" });
+  }
+
+  try {
+    // 更新購物車數量的 SQL 查詢
+    const sql =
+      "UPDATE cart_list SET quantity = ? WHERE product_variant_id = ?";
+    const [result] = await db.execute(sql, [quantity, vid]);
+
+    if (result.affectedRows === 0) {
+      return res.status(404).json({ message: "Cart item not found" });
+    }
+
+    res.status(200).json({ message: "Quantity updated successfully" });
+  } catch (error) {
+    console.error("Error updating cart quantity:", error);
+    res.status(500).json({ message: "Internal server error" });
+  }
+});
+
+// 刪除購物車商品
+router.delete("/delete", async (req, res) => {
+  const { vid } = req.body;
+
+  if (!vid) {
+    return res.status(400).json({ message: "Invalid input" });
+  }
+
+  try {
+    // 刪除購物車商品的 SQL 查詢
+    const sql = "DELETE FROM cart_list WHERE product_variant_id = ?";
+    const [result] = await db.execute(sql, [vid]);
+
+    if (result.affectedRows === 0) {
+      return res.status(404).json({ message: "Cart item not found" });
+    }
+
+    res.status(200).json({ message: "Cart item deleted successfully" });
+  } catch (error) {
+    console.error("Error deleting cart item:", error);
+    res.status(500).json({ message: "Internal server error" });
+  }
+});
 export default router;
