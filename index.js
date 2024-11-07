@@ -3,10 +3,11 @@ import cors from "cors";
 import products from "./routes/products.js";
 import db from "./utils/connect-mysql.js";
 import blog from "./routes/blog.js";
-import message from "./routes/message.js";
 import authRoutes from "./routes/auth.js";
 import memberProfile from "./routes/profile.js";
+import divesite from "./routes/divesite.js";
 import jwt from "jsonwebtoken";
+import comment from "./routes/comment.js";
 import cart from "./routes/cart.js";
 
 // ************* 頂層的 middlewares *************
@@ -38,14 +39,14 @@ app.use((req, res, next) => {
 
 // app.use自己import的檔案跟導入的變數名
 app.use("/products", products);
-//app.use("/divesite", divesite);
+app.use("/divesite", divesite);
 //app.use("/diary", diary);
 //app.use("/lesson", lesson);
 //app.use("/member", member);
 app.use("/api/blog", blog);
-app.use("/api/message", message);
 app.use("/auth", authRoutes);
 app.use("/profile", memberProfile);
+app.use("/api/comment", comment);
 app.use("/cart", cart);
 
 // 測試路由
@@ -63,6 +64,7 @@ app.get("/test", async (req, res) => {
 });
 
 //************放靜態內容資料夾的位置************
+app.use(express.static("public"));
 
 //*************  404 頁面要在所有的路由後面  *************
 app.use((req, res) => {
