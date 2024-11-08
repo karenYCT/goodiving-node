@@ -3,7 +3,62 @@ import db from "../utils/connect-mysql.js";
 
 const router = express.Router();
 
-// 取得所有地區的潛點
+// 取得所有潛點
+router.get("/all", async (req, res) => {
+  try {
+    const sql = `
+    SELECT 
+      si.site_id,
+      si.site_name,
+      si.x_position,
+      si.y_position,
+      si.max_depth,
+      si.region_id,
+      si.created_at,
+      l.level_name,
+      l.level_id,
+      m.method_name,
+      m.method_id,
+      r.region_name,
+      r.region_english,
+      img.site_img_path,
+      img.site_intro
+    FROM site_info si
+    JOIN level l ON si.level_id = l.level_id
+    JOIN method m ON si.method_id = m.method_id
+    JOIN site_region r ON si.region_id = r.region_id
+    LEFT JOIN site_img img ON si.site_id = img.site_id
+    WHERE (img.img_main = 1 OR img.img_main IS NULL)
+    ORDER BY si.site_id`;
+    
+    const [rows] = await db.query(sql);
+    res.json(rows);
+  } catch(error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// 通過 region_englowercase 取得地區資料
+router.get("/region-by-lowercase/:englowercase", async (req, res) => {
+  try {
+    const sql = `
+      SELECT *
+      FROM site_region 
+      WHERE region_englowercase = ?
+    `;
+    const [rows] = await db.query(sql, [req.params.englowercase]);
+    
+    if (rows.length > 0) {
+      res.json(rows[0]);
+    } else {
+      res.status(404).json({ message: 'Region not found' });
+    }
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// 取得地區
 router.get("/region", async (req, res) => {
   try{
     const sql = `SELECT * FROM site_region ORDER BY region_id`;
@@ -35,7 +90,6 @@ router.get("/level", async (req, res) => {
     res.status(500).json({ error: error.message });
   }
 });
-
 
 // 取得特定地區的潛點
 router.get("/region/:region_id", async (req, res) => {
