@@ -187,9 +187,36 @@ router.post("/register", async (req, res) => {
   console.log("看一下data", data);
 
   // SQL語法
-  const sql = `INSERT INTO user SET ?`;
-  const [result] = await db.query(sql, [data]);
-  res.json({ ...result, success: !!result.affectedRows });
+  const sqlRegister = `INSERT INTO user SET ?`;
+  const [result] = await db.query(sqlRegister, [data]);
+
+  const [newUser] = await db.query(sqlFindEmail, [email]);
+
+  // 新增到資料庫之後，可以開始生成 Token
+  const payload = {
+    user_id: newUser[0].user_id,
+    user_full_name: newUser[0].user_full_name,
+    role_id: newUser[0].role_id,
+  };
+
+  console.log("新註冊的JWT_KEY是:", process.env.JWT_KEY);
+  const token = jwt.sign(payload, process.env.JWT_KEY);
+
+  result.data ={
+    user_id: newUser[0].user_id,
+    user_email: newUser[0].user_email,
+    user_full_name: newUser[0].user_full_name,
+    role_id: newUser[0].role_id,
+    token,
+  }
+  // res.json({ ...result, success: !!result.affectedRows });
+  res.json({
+    success: !!affectedRows,
+    error: {
+      issues: [],
+    },
+  });
 });
+
 
 export default router;
