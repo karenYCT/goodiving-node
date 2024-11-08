@@ -38,6 +38,26 @@ router.get("/all", async (req, res) => {
   }
 });
 
+// 通過 region_englowercase 取得地區資料
+router.get("/region-by-lowercase/:englowercase", async (req, res) => {
+  try {
+    const sql = `
+      SELECT *
+      FROM site_region 
+      WHERE region_englowercase = ?
+    `;
+    const [rows] = await db.query(sql, [req.params.englowercase]);
+    
+    if (rows.length > 0) {
+      res.json(rows[0]);
+    } else {
+      res.status(404).json({ message: 'Region not found' });
+    }
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // 取得地區
 router.get("/region", async (req, res) => {
   try{
