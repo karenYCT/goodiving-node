@@ -48,6 +48,7 @@ app.use("/auth", authRoutes);
 app.use("/profile", memberProfile);
 app.use("/api/comment", comment);
 app.use("/cart", cart);
+app.use('/uploads', express.static('public/uploads'));
 
 // 測試路由
 app.get("/test", async (req, res) => {

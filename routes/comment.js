@@ -19,6 +19,7 @@ app.get('/blog/:blogId', async (req, res) => {
   const { blogId } = req.params; // 確保使用 blogId
   try {
     const sql = 'SELECT * FROM blog_comment WHERE bl_id = ? ORDER BY created_at DESC'; // 根據 blogId 過濾
+    
     const [rows] = await db.query(sql, [blogId]); // 使用 blogId 作為查詢參數
     res.json(rows);
   } catch (error) {
@@ -40,6 +41,7 @@ app.post('/blog/:blogId', async function (req, res) {
     const [comments] = await db.query(findByIdSql,[rows.insertId]);    
     res.json(comments[0]);
   }catch(error){
+    
     res.status(500).json({ error: error.message });
   }
 });

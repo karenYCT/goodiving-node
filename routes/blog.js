@@ -6,11 +6,11 @@ const app = express();
 // /api/blog GET 查詢
 app.get('/',async function (req, res) {
   try{
-    let sql = `SELECT * FROM blog `;
+    let sql = `SELECT b.*, u.user_full_name FROM blog b JOIN user u ON b.user_id=u.user_id `;
     if(req.query.keyword){
-      sql += `WHERE content LIKE '%${decodeURIComponent(req.query.keyword)}%' `
+      sql += `WHERE b.content LIKE '%${decodeURIComponent(req.query.keyword)}%' `
     }
-    sql += 'ORDER BY created_at DESC'
+    sql += 'ORDER BY b.created_at DESC'
     const [rows] = await db.query(sql);
     res.json(rows);
   }catch(error){
@@ -66,6 +66,7 @@ app.get('/:id',async function (req, res) {
   const postId = req.params.id
   try{
     const sql = `SELECT * FROM blog WHERE id =?`; //單一則文章
+  
     const [rows] = await db.query(sql,[postId]);
     res.json(rows);
   }catch(error){
