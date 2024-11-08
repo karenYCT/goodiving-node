@@ -173,4 +173,94 @@ router.delete("/delete", async (req, res) => {
     res.status(500).json({ message: "Internal server error" });
   }
 });
+
+// 新增訂單
+router.post("/checkout", async (req, res) => {
+  const { user_id, selectedProducts } = req.body;
+
+  if (!user_id || !selectedProducts || selectedProducts.length === 0) {
+    return res.status(400).json({ message: "無效的訂單資料" });
+  }
+
+  const connection = await db.getConnection();
+  try {
+    await connection.beginTransaction();
+
+    const insufficientStockProducts = []; // 用來存儲庫存不足的商品
+
+    // 檢查每個選中商品的庫存
+    for (const product of selectedProducts) {
+      const { vid, quantity } = product;
+
+      const [rows] = await connection.execute(
+        "SELECT stock FROM product_variants WHERE product_variant_id = ? FOR UPDATE",
+        [vid]
+      );
+
+      if (rows.length === 0) {
+        throw new Error(`找不到商品變體ID: ${vid}`);
+      }
+
+      const stock = rows[0].stock;
+
+      if (stock < quantity) {
+        // 庫存不足，記錄該商品和其剩餘庫存
+        insufficientStockProducts.push({
+          vid,
+          title: product.title,
+          availableStock: stock,
+        });
+      }
+    }
+
+    // 如果有庫存不足的商品，回傳信息給前端
+    if (insufficientStockProducts.length > 0) {
+      return res.status(400).json({
+        message: "部分商品庫存不足",
+        insufficientStockProducts,
+      });
+    }
+
+    // 庫存充足，繼續處理訂單，插入到 order_list 表格
+    const [orderResult] = await connection.execute(
+      "INSERT INTO order_list (user_id) VALUES (?)",
+      [user_id] // 其他皆為空值，在結帳畫面更新資料
+    );
+
+    const orderId = orderResult.insertId;
+
+    // 插入到 order_items 表格
+    for (const product of selectedProducts) {
+      const { vid, quantity, price } = product;
+
+      await connection.execute(
+        "INSERT INTO order_items (order_id, product_variant_id, quantity, price) VALUES (?, ?, ?, ?)",
+        [orderId, vid, quantity, price]
+      );
+    }
+
+    // 從 cart_list 中移除已購買的商品
+    const productVariantIds = selectedProducts.map((product) => product.vid);
+
+    await connection.execute(
+      `DELETE FROM cart_list WHERE user_id = ? AND product_variant_id IN (?${",?".repeat(
+        productVariantIds.length - 1
+      )});`,
+      [user_id, ...productVariantIds]
+    );
+
+    // 提交 transaction
+    await connection.commit();
+    res
+      .status(200)
+      .json({ message: "訂單已生成，商品已從購物車移除", orderId });
+  } catch (error) {
+    await connection.rollback();
+    console.error("結帳失敗:", error);
+    res.status(500).json({ message: error.message });
+  } finally {
+    connection.release();
+  }
+});
+
 export default router;
