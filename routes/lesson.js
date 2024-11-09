@@ -1,4 +1,3 @@
-
 import express from "express";
 import db from "../utils/connect-sql.js";
 const router = express.Router();
@@ -16,7 +15,7 @@ router.get("/", async (req, res) => {
   let page = parseInt(req.query.page) || 1;
 
   // 取得篩選與排序參數
-  const { loc, date, type, dept, exp, sex, sort } = req.query;
+  const { loc, date, type, dept, exp, gender, sort } = req.query;
   const params = [];
 
   // 主查詢
@@ -54,9 +53,9 @@ router.get("/", async (req, res) => {
     params.push(exp);
   }
 
-  if (sex) {
+  if (gender) {
     sql += " AND c.coach_sex = ?";
-    params.push(sex);
+    params.push(gender);
   }
 
   // 加入排序條件
