@@ -1,6 +1,7 @@
 import express from "express";
 import db from "../utils/connect-sql.js";
 const router = express.Router();
+import moment from "moment-timezone";
 
 // 取得資料
 // router.get("/", async (req, res) => {
@@ -20,10 +21,13 @@ router.get("/", async (req, res) => {
 
   // 主查詢
   let sql = `
-    SELECT lr.round_id, lr.lesson_id, lr.coach_id, lr.lesson_loc_id, lr.round_start, lr.round_price,l.lesson_name, c.coach_name, c.coach_sex, c.coach_rate, c.coach_exp
+    SELECT lr.round_id, lr.lesson_id, lr.coach_id, lr.lesson_loc_id, lr.round_start, lr.round_end, lr.round_price, lr.round_quota, l.lesson_name, l.lesson_name_zh, l.lesson_img_a, c.coach_name, c.coach_sex, c.coach_img, c.coach_rate, c.coach_exp, lt.lesson_type, cd.cert_dept, ll.lesson_loc
     FROM lesson_round lr
     JOIN lesson l ON lr.lesson_id = l.lesson_id
     JOIN coach c ON lr.coach_id = c.coach_id
+    JOIN lesson_loc ll ON lr.lesson_loc_id = ll.lesson_loc_id
+    JOIN lesson_type lt ON l.lesson_type_id = lt.lesson_type_id
+    JOIN cert_dept cd ON l.cert_dept_id = cd.cert_dept_id
     WHERE 1=1
   `;
 
@@ -43,6 +47,7 @@ router.get("/", async (req, res) => {
     params.push(type);
   }
 
+  // TODO: 以下同一個分類無法複選
   if (dept) {
     sql += " AND l.cert_dept_id = ?";
     params.push(dept);
@@ -88,6 +93,9 @@ router.get("/", async (req, res) => {
       FROM lesson_round lr
       JOIN lesson l ON lr.lesson_id = l.lesson_id
       JOIN coach c ON lr.coach_id = c.coach_id
+      JOIN lesson_type lt ON l.lesson_type_id = lt.lesson_type_id
+      JOIN cert_dept cd ON l.cert_dept_id = cd.cert_dept_id
+      JOIN lesson_loc ll ON lr.lesson_loc_id = ll.lesson_loc_id
       WHERE 1=1
     ` + sql.slice(sql.indexOf("AND"), sql.indexOf("ORDER BY")); // 重用篩選條件
 
@@ -96,6 +104,14 @@ router.get("/", async (req, res) => {
 
     // 查詢符合條件的資料
     const [rows] = await db.query(sql, params);
+
+    rows.forEach((el) => {
+      const s = moment(el.round_start);
+      el.round_start = s.isValid() ? s.format("YYYY/MM/DD") : "";
+      const e = moment(el.round_end);
+      el.round_end = e.isValid() ? e.format("YYYY/MM/DD") : "";
+    });
+
     res.json({ totalRows, totalPages, rows });
   } catch (err) {
     console.error(err);
