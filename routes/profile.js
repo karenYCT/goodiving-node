@@ -63,6 +63,7 @@ router.put("/modify", async (req, res) => {
     user_address: address,
     user_city: city,
   };
+  console.log("看一下檢查通過後的data:", data)
 
   const sqlModifyData = `UPDATE user SET ? WHERE user_id = ?`;
   const [result] = await db.query(sqlModifyData, [data, id]);
