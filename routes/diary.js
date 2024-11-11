@@ -87,22 +87,27 @@ router.get("/images/:filename", (req, res) => {
 router.post("/add", async (req, res) => {
   const output = {
     success: false,
-    error: {},
+    errors: {},
     data: null,
   };
 
   //資料驗證必填欄位
   try{
+
+    // 確保接收到的資料是純物件
+    const requestData = JSON.parse(JSON.stringify(req.body));
+
+    //資料驗證必填欄位
     const requiredFields = ['date', 'site_id'];
     const errors = {};
     requiredFields.forEach(field => {
       if (!req.body[field]) {
-        errers[field] = `${field} 為必填欄位`;
+        errors[field] = `${field} 為必填欄位`;
       }
     });
 
-    if (Object.keys(errers).length > 0) {
-      output.error = errers;
+    if (Object.keys(errors).length > 0) {
+      output.errors = errors;
       return res.status(400).json(output);
     }
 
@@ -159,11 +164,11 @@ router.post("/add", async (req, res) => {
     //新增圖片
     if (images && images.length > 0){
       const imagesSql = `
-      INSERT INTO log_img (img_id, img_url, is_main)
+      INSERT INTO log_img (log_id, img_url, is_main)
       VALUES ?
     `;
 
-      const imagesvalues = images.map(img => [
+      const imageValues = images.map(img => [
         log_id,
         img.path,
         img.isMain || false
@@ -176,6 +181,9 @@ router.post("/add", async (req, res) => {
       log_id,
       message: "新增成功"
     };
+
+    // 直接回傳結果
+    return res.json(output);
 
 } catch (error) {
   console.error('新增日誌錯誤:', error);
