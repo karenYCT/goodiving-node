@@ -3,78 +3,6 @@ import db from "../utils/connect-sql.js";
 import mysql from "mysql2/promise";
 const router = express.Router();
 
-// 讀取購物車所有商品
-router.get("/:user_id", async (req, res) => {
-  // todo 檢查用戶token
-  const user_id = req.params.user_id;
-
-  try {
-    // 查詢用戶的購物車商品資料 (cart_list)
-    const sql1 = `
-      SELECT c.cart_id, c.quantity, c.product_variant_id
-      FROM cart_list c
-      WHERE c.user_id = ?
-    `;
-    const [cartItems] = await db.execute(sql1, [user_id]);
-
-    if (cartItems.length === 0) {
-      return res.status(404).json({ message: "購物車為空或用戶不存在" });
-    }
-
-    // 取出所有的 product_variant_id(陣列)
-    const productVariantIds = cartItems.map((item) => item.product_variant_id);
-    // 用商品變體id來查詢該商品的size/color/stock
-    const sql2 = `
-      SELECT pv.product_variant_id, pv.product_id, pv.size, pv.color, pv.stock
-      FROM product_variants pv
-      WHERE pv.product_variant_id IN (?${",?".repeat(
-        productVariantIds.length - 1
-      )});
-    `;
-
-    const [productVariants] = await db.execute(sql2, productVariantIds);
-
-    // 取出所有商品的 product_id
-    const productIds = productVariants.map((pv) => pv.product_id);
-
-    // 用商品id來查詢該商品的id/title/price/img_url
-    const sql3 = `
-      SELECT p.product_id, p.title, p.price, p.img_url
-      FROM product_list p
-      WHERE p.product_id IN (?${",?".repeat(productIds.length - 1)});
-    `;
-    const [productList] = await db.execute(sql3, productIds);
-
-    // 合併商品資料並返回結果
-    const response = cartItems.map((cartItem) => {
-      // 用商品變體id來查詢該商品的size/color/stock
-      const variant = productVariants.find(
-        (pv) => pv.product_variant_id === cartItem.product_variant_id
-      );
-      // 用商品id來查詢該商品的id/title/price/img_url
-      const product = productList.find(
-        (p) => p.product_id === variant.product_id
-      );
-      // 將前端要的資料組裝
-      return {
-        id: product.product_id,
-        vid: variant.product_variant_id,
-        title: product.title,
-        price: product.price,
-        quantity: cartItem.quantity,
-        size: variant.size,
-        color: variant.color,
-        image: product.img_url,
-      };
-    });
-
-    return res.json(response);
-  } catch (err) {
-    console.error(err);
-    return res.status(500).json({ message: "伺服器錯誤" });
-  }
-});
-
 // 新增產品到購物車
 router.post("/add", async (req, res) => {
   const { variant_id, user_id } = req.body;
@@ -182,6 +110,15 @@ router.post("/checkout", async (req, res) => {
     return res.status(400).json({ message: "無效的訂單資料" });
   }
 
+  const [order] = await db.execute(
+    `SELECT order_id FROM order_list WHERE user_id = ? AND is_paid = false`,
+    [user_id]
+  );
+
+  if (order.length > 0) {
+    return res.status(400).json({ order_exist: true });
+  }
+
   const connection = await db.getConnection();
   try {
     await connection.beginTransaction();
@@ -262,5 +199,184 @@ router.post("/checkout", async (req, res) => {
     connection.release();
   }
 });
+
+// 讀取訂單(用JWT middleware驗證)
+router.get("/checkout", async (req, res) => {
+  const user_id = req.headers["x-user-id"];
+  const connection = await db.getConnection();
+  try {
+    // 查詢未支付的訂單
+    const [orderList] = await connection.execute(
+      `SELECT order_id FROM order_list WHERE user_id = ? AND is_paid = false`,
+      [user_id]
+    );
+
+    if (orderList.length === 0) {
+      return res.status(404).json({ message: "沒有找到未支付的訂單" });
+    }
+
+    const orderId = orderList[0].order_id; // 假設每個用戶只有一個未支付的訂單
+
+    // 查詢訂單中的商品資訊
+    const [items] = await connection.execute(
+      `SELECT
+        p.img_url image,
+        p.title,
+        p.price,
+        oi.order_id,
+        oi.quantity,
+        v.size,
+        v.color
+      FROM order_items oi
+      JOIN product_variants v ON oi.product_variant_id = v.product_variant_id
+      JOIN product_list p ON v.product_id = p.product_id
+      WHERE oi.order_id = ?`,
+      [orderId]
+    );
+
+    // 返回商品資訊
+    res.status(200).json(items);
+  } catch (error) {
+    console.error("查詢未支付訂單失敗:", error);
+    res.status(500).json({ message: "伺服器錯誤，請稍後再試" });
+  } finally {
+    connection.release();
+  }
+});
+
+// 更新訂單
+router.patch("/checkout", async (req, res) => {
+  const {
+    orderId,
+    shipping_method,
+    shipping_address,
+    payment_method,
+    recipient_name,
+    recipient_email,
+    recipient_phone,
+  } = req.body;
+
+  // 驗證必填欄位
+  if (
+    !shipping_method ||
+    !shipping_address ||
+    !payment_method ||
+    !recipient_name ||
+    !recipient_email ||
+    !recipient_phone
+  ) {
+    return res.status(400).json({ message: "請填寫所有欄位" });
+  }
+
+  const connection = await db.getConnection();
+  try {
+    await connection.beginTransaction();
+
+    // 更新訂單資訊
+    const [result] = await connection.execute(
+      `UPDATE order_list 
+       SET shipping_method = ?, shipping_address = ?, payment_method = ?, recipient_name = ?, recipient_email = ?, recipient_phone = ?
+       WHERE order_id = ?`,
+      [
+        shipping_method,
+        shipping_address,
+        payment_method,
+        recipient_name,
+        recipient_email,
+        recipient_phone,
+        orderId,
+      ]
+    );
+
+    // 檢查是否有任何行被更新
+    if (result.affectedRows === 0) {
+      throw new Error(`找不到訂單ID: ${orderId}`);
+    }
+
+    await connection.commit();
+    res.status(200).json({ ok: true, message: "訂單資訊已更新" });
+  } catch (error) {
+    await connection.rollback();
+    console.error("更新訂單失敗:", error);
+    res.status(500).json({ ok: false, message: error.message });
+  } finally {
+    connection.release();
+  }
+});
+
+// 讀取購物車所有商品
+router.get("/:user_id", async (req, res) => {
+  // todo 檢查用戶token
+  const user_id = req.params.user_id;
+
+  try {
+    // 查詢用戶的購物車商品資料 (cart_list)
+    const sql1 = `
+      SELECT c.cart_id, c.quantity, c.product_variant_id
+      FROM cart_list c
+      WHERE c.user_id = ?
+    `;
+    const [cartItems] = await db.execute(sql1, [user_id]);
+
+    if (cartItems.length === 0) {
+      return res.status(404).json({ message: "購物車為空或用戶不存在" });
+    }
+
+    // 取出所有的 product_variant_id(陣列)
+    const productVariantIds = cartItems.map((item) => item.product_variant_id);
+    // 用商品變體id來查詢該商品的size/color/stock
+    const sql2 = `
+      SELECT pv.product_variant_id, pv.product_id, pv.size, pv.color, pv.stock
+      FROM product_variants pv
+      WHERE pv.product_variant_id IN (?${",?".repeat(
+        productVariantIds.length - 1
+      )});
+    `;
+
+    const [productVariants] = await db.execute(sql2, productVariantIds);
+
+    // 取出所有商品的 product_id
+    const productIds = productVariants.map((pv) => pv.product_id);
+
+    // 用商品id來查詢該商品的id/title/price/img_url
+    const sql3 = `
+      SELECT p.product_id, p.title, p.price, p.img_url
+      FROM product_list p
+      WHERE p.product_id IN (?${",?".repeat(productIds.length - 1)});
+    `;
+    const [productList] = await db.execute(sql3, productIds);
+
+    // 合併商品資料並返回結果
+    const response = cartItems.map((cartItem) => {
+      // 用商品變體id來查詢該商品的size/color/stock
+      const variant = productVariants.find(
+        (pv) => pv.product_variant_id === cartItem.product_variant_id
+      );
+      // 用商品id來查詢該商品的id/title/price/img_url
+      const product = productList.find(
+        (p) => p.product_id === variant.product_id
+      );
+      // 將前端要的資料組裝
+      return {
+        id: product.product_id,
+        vid: variant.product_variant_id,
+        title: product.title,
+        price: product.price,
+        quantity: cartItem.quantity,
+        size: variant.size,
+        color: variant.color,
+        image: product.img_url,
+      };
+    });
+
+    return res.json(response);
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({ message: "伺服器錯誤" });
+  }
+});
+
+channel_id = "2006556386";
+channel_secret_key = "044354c7855611a40b85e9a430486c2e";
 
 export default router;
