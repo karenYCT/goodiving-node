@@ -113,14 +113,17 @@ router.put("/modifypsd", async (req, res) => {
   }
 
   // 密碼檢查:是不是真的是現有密碼
-  const sqlFindID= `SELECT * FROM user WHERE user_id = ?`;
+  const sqlFindID = `SELECT * FROM user WHERE user_id = ?`;
   const [rows] = await db.query(sqlFindID, [id]);
   if (rows.length > 0) {
-    const passwordResult = await bcrypt.compare(oldPassword, rows[0].user_password);
-    console.log("newPassword:",newPassword)
-    console.log("rows[0].user_password:",rows[0].user_password)
-    console.log("passwordResult:",passwordResult)
-    if (!passwordResult){
+    const passwordResult = await bcrypt.compare(
+      oldPassword,
+      rows[0].user_password
+    );
+    console.log("newPassword:", newPassword);
+    console.log("rows[0].user_password:", rows[0].user_password);
+    console.log("passwordResult:", passwordResult);
+    if (!passwordResult) {
       return res.status(409).json({
         success: false,
         error: {
@@ -133,8 +136,9 @@ router.put("/modifypsd", async (req, res) => {
         },
       });
     }
-    }
-  
+  }
+
+  // 檢查新密碼跟確認新密碼是不是一樣的
 
   // 檢查通過就進到這裡
   newPassword = await bcrypt.hash(newPassword, 12);

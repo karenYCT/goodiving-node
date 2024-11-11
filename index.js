@@ -10,10 +10,18 @@ import jwt from "jsonwebtoken";
 import comment from "./routes/comment.js";
 import cart from "./routes/cart.js";
 import lesson from "./routes/lesson.js";
+import path from "path";
+import { fileURLToPath } from "url";
 
+const app = express();
+
+// 確保 __dirname 正確
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+app.set("view engine", "ejs");
 
 // ************* 頂層的 middlewares *************
-const app = express();
 const corsOptions = {
   credentials: true,
   origin: (origin, callback) => {
@@ -26,18 +34,18 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
 // ************* 自訂的頂層 middleware *************
-app.use((req, res, next) => {
-  let auth = req.get("Authorization");
-  if (auth && auth.indexOf("Bearer " === 0)) {
-    let token = auth.slice(7);
-    try {
-      req.user_jwt = jwt.verify(token, process.env.JWT_KEY);
-    } catch (ex) {
-      console.log(ex);
-    }
-  }
-  next();
-});
+// app.use((req, res, next) => {
+//   let auth = req.get("Authorization");
+//   if (auth && auth.indexOf("Bearer " === 0)) {
+//     let token = auth.slice(7);
+//     try {
+//       req.user_jwt = jwt.verify(token, process.env.JWT_KEY);
+//     } catch (ex) {
+//       console.log(ex);
+//     }
+//   }
+//   next();
+// });
 
 // app.use自己import的檔案跟導入的變數名
 app.use("/products", products);
@@ -50,7 +58,7 @@ app.use("/auth", authRoutes);
 app.use("/profile", memberProfile);
 app.use("/api/comment", comment);
 app.use("/cart", cart);
-app.use('/uploads', express.static('public/uploads'));
+app.use("/uploads", express.static("public/uploads"));
 
 // 測試路由
 app.get("/test", async (req, res) => {
