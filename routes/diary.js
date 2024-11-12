@@ -85,6 +85,57 @@ router.get("/images/:filename" , (req, res) => {
   }
 });
 
+router.get("/logs", async (req, res) => {
+  try {
+    const sql = `
+      SELECT 
+        l.log_id,
+        l.date,
+        l.max_depth,
+        l.bottom_time,
+        l.water_temp,
+        l.log_exp,
+        l.is_privacy,
+        l.created_at,
+        s.site_name,
+        s.region_id,
+        sr.region_name,
+        m.method_name,
+        m.method_id,
+        v.visi_name AS visibility,
+        u.user_full_name
+      FROM log l
+      LEFT JOIN site_info s ON l.site_id = s.site_id
+      LEFT JOIN site_region sr ON s.region_id = sr.region_id
+      LEFT JOIN method m ON l.method_id = m.method_id
+      LEFT JOIN visibility v ON l.visi_id = v.visi_id
+      LEFT JOIN user u ON l.user_id = u.user_id
+      WHERE l.is_draft = 0
+      ORDER BY l.created_at DESC
+    `;
+    
+    const [logs] = await db.query(sql);
+
+    // 獲取每個日誌的圖片
+    const logsWithImages = await Promise.all(
+      logs.map(async (log) => {
+        const [images] = await db.query(
+          `SELECT img_id, img_url, is_main 
+          FROM log_img 
+          WHERE log_id = ?`,
+          [log.log_id]
+        );
+        return { ...log, images };
+      })
+    );
+
+    res.json(logsWithImages);
+  } catch (error) {
+    console.error('獲取日誌列表失敗:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 //新增潛水日誌 - 需要驗證
 router.post("/add" , async (req, res) => {
   const output = {
@@ -205,7 +256,6 @@ router.post("/add" , async (req, res) => {
   }
   res.json(output);
 });
-
 //讀取單一日誌的內容- 需要驗證
 router.get("/:diary_id", async (req, res) => {
   try {
@@ -239,9 +289,9 @@ router.get("/:diary_id", async (req, res) => {
     // 修正：加入參數到查詢中
     const [rows] = await db.query(sql, [diary_id]);
     
-    if (rows.length === 0) {
-      return res.status(404).json({ error: "日誌不存在或無權限查看" });
-    }
+    // if (rows.length === 0) {
+    //   return res.status(404).json({ error: "日誌不存在或無權限查看" });
+    // }
     
     res.json(rows[0]);
   } catch (error) {
@@ -252,6 +302,7 @@ router.get("/:diary_id", async (req, res) => {
     });
   }
 });
+
 
 //讀取單一日誌的照片
 router.get("/images/:diary_id" , async (req, res) => {
@@ -270,111 +321,6 @@ router.get("/images/:diary_id" , async (req, res) => {
   }
 });
 
-// 取得所有日誌列表（包含區域資訊）
-router.get("/logs", async (req, res) => {
-  const sql = `
-    SELECT 
-      l.log_id,
-      l.date,
-      l.max_depth,
-      l.bottom_time,
-      l.water_temp,
-      l.log_exp,
-      l.is_privacy,
-      l.created_at,
-      s.site_name,
-      sr.region_id,
-      sr.region_name,
-      sr.region_english,
-      m.method_name,
-      v.visi_name AS visibility,
-      li.img_url AS main_image,
-      u.user_full_name,
-      u.profile_picture
-    FROM log l
-    LEFT JOIN site_info s ON l.site_id = s.site_id
-    LEFT JOIN site_region sr ON s.region_id = sr.region_id
-    LEFT JOIN method m ON l.method_id = m.method_id
-    LEFT JOIN visibility v ON l.visi_id = v.visi_id
-    LEFT JOIN user u ON l.user_id = u.user_id
-    LEFT JOIN (
-      SELECT log_id, img_url 
-      FROM log_img 
-      WHERE is_main = 1
-    ) li ON l.log_id = li.log_id
-    ORDER BY l.created_at DESC;
-  `;
-  
-  try {
-    console.log('執行 SQL 查詢');
-    const [rows] = await db.query(sql);
-    console.log('查詢結果數量:', rows.length);
-    console.log('第一筆資料:', rows[0]);
-    
-    res.json(rows);
-  } catch (error) {
-    console.error("Error fetching logs:", error);
-    res.status(500).json({ 
-      error: "Failed to fetch logs",
-      details: error.message
-    });
-  }
-});
 
-// 讀取日誌列表 - 需要驗證
-// router.get("/logs", async (req, res) => {
-//   try {
-
-//     console.log('進入 logs 路由');
-//     console.log('req.user:', req.user);
-//     const userId = req.user.user_id;
-//     console.log('使用者 ID:', userId);
-
-//     // 先檢查資料庫連線
-//     const testQuery = await db.query('SELECT 1 as test');
-//     console.log('資料庫連線測試:', testQuery);
-
-//     const sql = `
-//       SELECT 
-//         l.log_id,
-//         l.date,
-//         l.max_depth,
-//         l.bottom_time,
-//         l.water_temp,
-//         l.log_exp,
-//         l.is_privacy,
-//         l.created_at,
-//         s.site_name,
-//         sr.region_id,
-//         sr.region_name,
-//         sr.region_english,
-//         m.method_name,
-//         v.visi_name AS visibility,
-//         li.img_url AS main_image
-//       FROM log l
-//       LEFT JOIN site_info s ON l.site_id = s.site_id
-//       LEFT JOIN site_region sr ON s.region_id = sr.region_id
-//       LEFT JOIN method m ON l.method_id = m.method_id
-//       LEFT JOIN visibility v ON l.visi_id = v.visi_id
-//       LEFT JOIN (
-//         SELECT log_id, img_url 
-//         FROM log_img 
-//         WHERE is_main = 1
-//       ) li ON l.log_id = li.log_id
-//       WHERE l.user_id = ?
-//       ORDER BY l.created_at DESC
-//     `;
-//     console.log('執行 SQL 查詢，參數:', userId);
-
-//     const [logs] = await db.query(sql, [userId]);
-//     console.log('查詢結果數量:', logs.length);
-//     console.log('第一筆資料:', logs[0]);
-    
-//     res.json(logs);
-//   } catch (error) {
-//     console.error("查詢出錯:", error);
-//     res.status(500).json({ error: '獲取日誌失敗' });
-//   }
-// });
 
 export default router;
