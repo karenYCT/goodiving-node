@@ -1,7 +1,12 @@
 import express from "express";
 import db from "../utils/connect-sql.js";
 import mysql from "mysql2/promise";
+import axios from "axios";
+import { generateSignature } from "../utils/linepay.js";
 const router = express.Router();
+const channelId = process.env.channel_id;
+const channelSecret = process.env.channel_secret;
+const linePayAPIUrl = process.env.linepay_api_url;
 
 // 新增產品到購物車
 router.post("/add", async (req, res) => {
@@ -244,7 +249,7 @@ router.get("/checkout", async (req, res) => {
   }
 });
 
-// 更新訂單
+// 更新訂單and送支付請求給LINE PAY，返回網址
 router.patch("/checkout", async (req, res) => {
   const {
     orderId,
@@ -254,26 +259,14 @@ router.patch("/checkout", async (req, res) => {
     recipient_name,
     recipient_email,
     recipient_phone,
+    totalPrice,
+    deliveryFee,
   } = req.body;
-
-  // 驗證必填欄位
-  if (
-    !shipping_method ||
-    !shipping_address ||
-    !payment_method ||
-    !recipient_name ||
-    !recipient_email ||
-    !recipient_phone
-  ) {
-    return res.status(400).json({ message: "請填寫所有欄位" });
-  }
 
   const connection = await db.getConnection();
   try {
-    await connection.beginTransaction();
-
-    // 更新訂單資訊
-    const [result] = await connection.execute(
+    // 1.更新訂單資訊
+    const [result] = await db.execute(
       `UPDATE order_list 
        SET shipping_method = ?, shipping_address = ?, payment_method = ?, recipient_name = ?, recipient_email = ?, recipient_phone = ?
        WHERE order_id = ?`,
@@ -293,14 +286,122 @@ router.patch("/checkout", async (req, res) => {
       throw new Error(`找不到訂單ID: ${orderId}`);
     }
 
-    await connection.commit();
-    res.status(200).json({ ok: true, message: "訂單資訊已更新" });
+    // 2. 構建支付請求
+    const requestBody = {
+      amount: totalPrice + deliveryFee,
+      currency: "TWD",
+      orderId: orderId,
+      packages: [
+        {
+          id: "test1",
+          amount: totalPrice + deliveryFee,
+          name: "GOODIVING商店",
+          products: [
+            {
+              name: "潛水商品",
+              quantity: 1,
+              price: totalPrice,
+            },
+            {
+              name: "運費",
+              quantity: 1,
+              price: deliveryFee,
+            },
+          ],
+        },
+      ],
+      redirectUrls: {
+        confirmUrl: `http://localhost:3001/cart/checkout/linepay/confirm`, // 支付成功後的跳轉API
+        cancelUrl: `http://localhost:3001/cart/cancel`, // 支付取消後的跳轉API
+      },
+    };
+
+    // 3. 使用工具函數生成 nonce 和 signature
+    const { nonce, signature } = generateSignature(
+      "/v3/payments/request",
+      requestBody
+    );
+
+    // 4. 發送支付請求
+    const response = await axios.post(
+      `${linePayAPIUrl}/v3/payments/request`,
+      requestBody,
+      {
+        headers: {
+          "Content-Type": "application/json",
+          "X-LINE-ChannelId": channelId,
+          "X-LINE-Authorization": signature,
+          "X-LINE-Authorization-Nonce": nonce,
+        },
+      }
+    );
+
+    // 5. 返回支付URL
+    const paymentUrl = response.data.info.paymentUrl.web;
+    res.status(200).json({ paymentUrl });
   } catch (error) {
-    await connection.rollback();
-    console.error("更新訂單失敗:", error);
-    res.status(500).json({ ok: false, message: error.message });
-  } finally {
-    connection.release();
+    console.error("訂單更新或支付請求失敗:", error);
+    res.status(500).json({ message: "訂單更新或支付請求失敗" });
+  }
+});
+
+// 成功付款後的請款API
+router.get("/checkout/linepay/confirm", async (req, res) => {
+  const { transactionId, orderId } = req.query;
+  try {
+    // 向DB確認訂單金額與支付金額是否一致
+    const [order] = await db.execute(
+      `SELECT * FROM order_items WHERE order_id = ?`,
+      [orderId]
+    );
+
+    const totalAmount = order.reduce((sum, item) => {
+      return sum + item.quantity * item.price; // 每個項目的金額加總
+    }, 0);
+
+    const requestBody = {
+      amount: totalAmount + 60, // 根據實際訂單金額
+      currency: "TWD",
+    };
+
+    // 1. 生成 nonce 和 signature
+    const { nonce, signature } = generateSignature(
+      `/v3/payments/${transactionId}/confirm`,
+      requestBody
+    );
+
+    // 2. 發送支付確認請求
+    const response = await axios.post(
+      `${linePayAPIUrl}/v3/payments/${transactionId}/confirm`,
+      requestBody,
+      {
+        headers: {
+          "Content-Type": "application/json",
+          "X-LINE-ChannelId": channelId,
+          "X-LINE-Authorization": signature,
+          "X-LINE-Authorization-Nonce": nonce,
+        },
+      }
+    );
+    console.log(response);
+
+    // 3. 處理支付結果
+    if (response.data.returnCode === "0000") {
+      // 支付成功，更新資料庫的 is_paid = true
+      await db.execute(
+        "UPDATE order_list SET is_paid = true WHERE order_id = ?",
+        [orderId]
+      );
+
+      // 跳轉到成功頁面
+      return res.redirect("http://localhost:3000/cart/complete");
+    } else {
+      // 支付失敗，跳轉到失敗頁面
+      return res.redirect("http://localhost:3000/cart/cancel");
+    }
+  } catch (error) {
+    console.error("支付確認失敗:", error);
+    res.status(500).json({ message: "支付確認失敗" });
   }
 });
 
@@ -375,8 +476,5 @@ router.get("/:user_id", async (req, res) => {
     return res.status(500).json({ message: "伺服器錯誤" });
   }
 });
-
-channel_id = "2006556386";
-channel_secret_key = "044354c7855611a40b85e9a430486c2e";
 
 export default router;
