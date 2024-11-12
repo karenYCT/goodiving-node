@@ -10,11 +10,29 @@ import jwt from "jsonwebtoken";
 import comment from "./routes/comment.js";
 import cart from "./routes/cart.js";
 import lesson from "./routes/lesson.js";
+import path from "path";
+import { fileURLToPath } from "url";
+import http from "http";
+import { Server } from "socket.io";
 
+const app = express();
+const server = http.createServer(app);
+const io = new Server(server, {
+  cors: {
+    origin: "http://localhost:3000", // 或是你的前端伺服器位置
+    methods: ["GET", "POST"]
+  }
+  
+});
+
+// 取得檔案URL
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+app.set("view engine", "ejs");
 
 
 // ************* 頂層的 middlewares *************
-const app = express();
 const corsOptions = {
   credentials: true,
   origin: (origin, callback) => {
@@ -51,7 +69,25 @@ app.use("/auth", authRoutes);
 app.use("/profile", memberProfile);
 app.use("/api/comment", comment);
 app.use("/cart", cart);
-app.use('/uploads', express.static('public/uploads'));
+app.use("/uploads", express.static("public/uploads"));
+
+// socket.io : 當有新用戶連接時
+// io.on('connection', (socket) => {
+//   console.log('A user connected: ' + socket.id);
+
+//   // 處理訊息接收
+//   socket.on('send_message', (message) => {
+//     console.log('Message received: ', message);
+
+//     // 廣播訊息(給所有連接的用戶，除發送者外)
+//     socket.broadcast.emit('receive_message', message);
+//   });
+
+//   // 用戶斷線
+//   socket.on('disconnect', () => {
+//     console.log('User disconnected');
+//   });
+// });
 
 
 // 測試路由
@@ -79,6 +115,6 @@ app.use((req, res) => {
 
 // 監聽server 放在最尾部
 const port = process.env.WEB_PORT || 3002;
-app.listen(port, () => {
+server.listen(port, () => {
   console.log(`server正在監聽port ${port}`);
 });

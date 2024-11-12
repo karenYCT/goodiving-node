@@ -1,5 +1,4 @@
-// 登入、登出、註冊相關的路由
-
+// 登入、登出、註冊、忘記密碼相關的路由
 import express from "express";
 import db from "../utils/connect-mysql.js";
 import upload from "../utils/upload.js";
@@ -7,6 +6,8 @@ import { z } from "zod";
 import moment from "moment-timezone";
 import bcrypt from "bcrypt";
 import jwt from "jsonwebtoken";
+import sendMail from "../utils/mailer.js";
+import { authenticator } from "otplib";
 
 const router = express.Router();
 
@@ -202,21 +203,188 @@ router.post("/register", async (req, res) => {
   console.log("新註冊的JWT_KEY是:", process.env.JWT_KEY);
   const token = jwt.sign(payload, process.env.JWT_KEY);
 
-  result.data ={
+  result.data = {
     user_id: newUser[0].user_id,
     user_email: newUser[0].user_email,
     user_full_name: newUser[0].user_full_name,
     role_id: newUser[0].role_id,
     token,
-  }
+  };
   // res.json({ ...result, success: !!result.affectedRows });
   res.json({
-    success: !!affectedRows,
+    ...result,
+    success: !!result.affectedRows,
     error: {
       issues: [],
     },
   });
 });
 
+// 使用者請求忘記密碼 (伺服器寄出 OTP email)
+router.post("/forgotpassword", async (req, res) => {
+  const { user_email } = req.body;
+  const { OTP_SECRET } = process.env;
+  // 回應給前端的訊息;
+  const output = {
+    success: false,
+    code: 0,
+    error: "",
+    bodyData: req.body,
+  };
+
+  try {
+    // 帳號是不是對的(是否有找到帳號);
+    const sqlFindEmail = `SELECT * FROM user WHERE user_email = ?`;
+    const [rows] = await db.query(sqlFindEmail, [user_email]);
+    console.log("看一下這筆資料rows[0]：" + JSON.stringify(rows[0], null, 2));
+
+    if (!rows.length) {
+      output.code = 400;
+      output.error = "這個 Email 沒有被註冊過";
+      return res.json(output);
+    }
+
+    // OTP 每 5 分鐘過期
+    authenticator.options = { step: 300 };
+    // 用 OPT 的鑰匙生成 OPT
+    const otp = authenticator.generate(OTP_SECRET + rows[0].user_id);
+    // 計算過期時機
+    const otp_expiration = new Date(Date.now() + 5 * 60 * 1000); // 現在時間 + 5 分鐘
+    console.log(otp, otp_expiration);
+    const otp_expiration_datetime = moment(otp_expiration).format("LLL");
+
+    // 把 OPT 存入 資料庫
+    const optdata = {
+      user_id: rows[0].user_id,
+      otp_code: otp,
+      otp_expiration: otp_expiration,
+      is_verified: 0,
+    };
+
+    const sqlPutOTP = `INSERT INTO otp_codes SET ?`;
+    const [resultOTP] = await db.query(sqlPutOTP, [optdata]);
+
+    // 發送郵件
+    await sendMail(user_email, otp, otp_expiration_datetime);
+    output.success = true;
+    output.message = "Email sent successfully!";
+    res.status(200).json({ ...output, resultOTP, optdata });
+  } catch (error) {
+    console.error("Error sending email:", error);
+    res.status(500).json({ error: "Failed to send email." });
+  }
+});
+
+// 使用者輸入OTP，並修改密碼
+router.post("/otp", async (req, res) => {
+  const { user_typing_otp, user_id } = req.body;
+  // 回應給前端的訊息;
+  const output = {
+    success: false,
+    code: 0,
+    error: "",
+    bodyData: req.body,
+  };
+
+  try {
+    const sqlFindUserID = `SELECT * FROM otp_codes WHERE user_id = ? ORDER BY otp_expiration DESC`;
+    const [rows] = await db.query(sqlFindUserID, [user_id]);
+    console.log("看一下這筆資料rows[0]：" + JSON.stringify(rows[0], null, 2));
+
+    const { otp_code, otp_expiration } = rows[0];
+
+    const isValidExpiration = new Date() < new Date(otp_expiration);
+    if (!isValidExpiration) {
+      output.error = "驗證碼已過期，請重新申請驗證碼";
+      return res.json(output);
+    }
+
+    const secret = process.env.OTP_SECRET + user_id; // 與生成時一致
+    const isValid = authenticator.check(user_typing_otp, secret);
+    if (!isValid) {
+      output.error = "驗證碼不正確，請重新輸入";
+      return res.json(output);
+    }
+
+    output.success = true;
+    output.message = "驗證成功";
+    res.json(output);
+  } catch (error) {
+    console.log(error);
+  }
+});
+
+// 使用者忘記密碼後重設密碼
+router.post("/set-new-password", async (req, res) => {
+  //回應給前端的訊息
+  const output = {
+    success: false,
+    code: 0,
+    error: "",
+    bodyData: req.body,
+    data: {},
+  };
+  let { id, password, checkPassword } = req.body;
+
+  // 用zod檢查欄位
+  const modifyPSDRequestSchema = z.object({
+    password: z
+      .string()
+      .min(8, { message: "密碼須至少8字元，包含英文及數字" })
+      .regex(/^(?=.*[A-Za-z])(?=.*\d)[A-Za-z\d]{8,}$/, {
+        message: "密碼須至少8字元，包含英文及數字",
+      }),
+    checkPassword: z
+      .string()
+      .min(8, { message: "密碼須至少8字元，包含英文及數字" })
+      .regex(/^(?=.*[A-Za-z])(?=.*\d)[A-Za-z\d]{8,}$/, {
+        message: "密碼須至少8字元，包含英文及數字",
+      }),
+  });
+
+  const zodResult = modifyPSDRequestSchema.safeParse({
+    password,
+    checkPassword,
+  });
+  if (!zodResult.success) {
+    return res.json(zodResult);
+  }
+
+  // 檢查新密碼跟確認新密碼是不是一樣的
+  if (password != checkPassword) {
+    console.log("密碼不一樣拉");
+    return res.json({
+      success: false,
+      error: {
+        issues: [
+          {
+            message: "確認密碼與密碼不相符",
+            path: ["email"],
+          },
+        ],
+      },
+    });
+  }
+
+  // 檢查通過就進到這裡
+  password = await bcrypt.hash(password, 12);
+  const data = {
+    user_id: id,
+    user_password: password,
+  };
+
+  const sqlModifyPSD = `UPDATE user SET ? WHERE user_id = ?`;
+  const [result] = await db.query(sqlModifyPSD, [data, id]);
+  console.log(
+    "看一下這筆資料修改密碼的result：" + JSON.stringify(result, null, 4)
+  );
+  res.json({
+    ...result,
+    success: !!result.affectedRows,
+    error: {
+      issues: [],
+    },
+  });
+});
 
 export default router;
