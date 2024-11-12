@@ -3,6 +3,7 @@ const router = express.Router();
 import moment from "moment-timezone";
 import express from "express";
 
+// 讀取列表及篩選資料
 router.get("/", async (req, res) => {
   res.locals.title = "goodiving - " + res.locals.title;
   res.locals.pageName = "搜尋課程";
@@ -131,11 +132,76 @@ router.get("/:round_id", async (req, res) => {
     WHERE round_id = ?`;
     const [rows] = await db.query(sql, [round_id]);
 
+    // 如果日期為有效資料則利用moment改格式, 不然設成空字串
+    const s = moment(rows.round_start);
+    if (s.isValid()) {
+      rows.round_start = s.format("YYYY/MM/DD");
+    } else {
+      rows.round_start = "";
+    }
+    const e = moment(rows.round_end);
+    if (e.isValid()) {
+      rows.round_end = e.format("YYYY/MM/DD");
+    } else {
+      rows.round_end = "";
+    }
+
     res.json({ rows });
   } catch (err) {
     console.log(err);
     res.status(500).json({ error: "Internal Server Error" });
   }
 });
+
+// 讀取單筆資料
+// router.get("/:round_id", async (req, res) => {
+//   const output = {
+//     success: false,
+//     data: {},
+//     error: "",
+//   };
+//   let round_id = parseInt(req.params.round_id) || 0;
+//   if (!round_id) {
+//     output.error = "沒有此資料的主鍵";
+//     return res.json(output);
+//   }
+//   const sql = `
+//     SELECT lr.round_id, lr.lesson_id, lr.coach_id, lr.lesson_loc_id, lr.round_start, lr.round_end, lr.round_price, lr.round_quota, l.lesson_name, l.lesson_name_zh, l.lesson_intro, l.lesson_group, l.lesson_content, l.lesson_process, l.lesson_contain, l.lesson_notice, l.lesson_img_a, l.lesson_img_b, l.lesson_img_c, l.lesson_img_d, l.lesson_img_e, c.coach_name, c.coach_img, c.coach_intro, c.coach_rate, c.coach_exp, lt.lesson_type, cd.cert_dept, ll.lesson_loc, cert.cert_dept, cert.cert_name
+//     FROM lesson_round lr
+//     JOIN lesson l ON lr.lesson_id = l.lesson_id
+//     JOIN coach c ON lr.coach_id = c.coach_id
+//     JOIN lesson_loc ll ON lr.lesson_loc_id = ll.lesson_loc_id
+//     JOIN lesson_type lt ON l.lesson_type_id = lt.lesson_type_id
+//     JOIN cert_dept cd ON l.cert_dept_id = cd.cert_dept_id
+//     JOIN cert_ref cr ON c.coach_id = cr.coach_id
+//     JOIN cert ON cr.cert_id = cert.cert_id
+//     WHERE round_id = ${round_id} `;
+//   const [rows] = await db.query(sql);
+
+//   // 利用資料長度來判斷有沒有拿到資料
+//   if (!rows.length) {
+//     output.error = "沒有此筆資料項目";
+//     return res.json(output);
+//   }
+//   const row = rows[0];
+
+//   // 如果日期為有效資料則利用moment改格式, 不然設成空字串
+//   const s = moment(row.round_start);
+//   if (s.isValid()) {
+//     row.round_start = s.format("YYYY/MM/DD");
+//   } else {
+//     row.round_start = "";
+//   }
+//   const e = moment(row.round_end);
+//   if (e.isValid()) {
+//     row.round_end = e.format("YYYY/MM/DD");
+//   } else {
+//     row.round_end = "";
+//   }
+
+//   output.data = row;
+//   output.success = true;
+//   res.json(output);
+// });
 
 export default router;
