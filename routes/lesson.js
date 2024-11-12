@@ -119,4 +119,29 @@ router.get("/", async (req, res) => {
   }
 });
 
+// 取得單一產品資料
+router.get("/:round_id", async (req, res) => {
+  const { round_id } = req.params;
+  try {
+    // 查詢產品基本資料
+    const sql = `
+    SELECT lr.round_id, lr.lesson_id, lr.coach_id, lr.lesson_loc_id, lr.round_start, lr.round_end, lr.round_price, lr.round_quota, l.lesson_name, l.lesson_name_zh, l.lesson_intro, l.lesson_group, l.lesson_content, l.lesson_process, l.lesson_contain, l.lesson_notice, l.lesson_img_a, l.lesson_img_b, l.lesson_img_c, l.lesson_img_d, l.lesson_img_e, c.coach_name, c.coach_img, c.coach_intro, c.coach_rate, c.coach_exp, lt.lesson_type, cd.cert_dept, ll.lesson_loc, cert.cert_dept, cert.cert_name
+    FROM lesson_round lr
+    JOIN lesson l ON lr.lesson_id = l.lesson_id
+    JOIN coach c ON lr.coach_id = c.coach_id
+    JOIN lesson_loc ll ON lr.lesson_loc_id = ll.lesson_loc_id
+    JOIN lesson_type lt ON l.lesson_type_id = lt.lesson_type_id
+    JOIN cert_dept cd ON l.cert_dept_id = cd.cert_dept_id
+    JOIN cert_ref cr ON c.coach_id = cr.coach_id
+    JOIN cert ON cr.cert_id = cert.cert_id
+    WHERE round_id = ?`;
+    const [rows] = await db.query(sql, [round_id]);
+
+    res.json({ rows });
+  } catch (err) {
+    console.log(err);
+    res.status(500).json({ error: "Internal Server Error" });
+  }
+});
+
 export default router;
