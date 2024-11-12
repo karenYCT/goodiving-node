@@ -11,7 +11,7 @@ import jwt from "jsonwebtoken";
 import comment from "./routes/comment.js";
 import cart from "./routes/cart.js";
 import lesson from "./routes/lesson.js";
-
+import authMiddleware from "./middlewares/authMiddleware.js";
 
 // ************* 頂層的 middlewares *************
 const app = express();
@@ -41,9 +41,9 @@ app.use((req, res, next) => {
 });
 
 // app.use自己import的檔案跟導入的變數名
+app.use("/diary", diary);
 app.use("/products", products);
 app.use("/divesite", divesite);
-app.use("/diary", diary);
 app.use("/lesson", lesson);
 //app.use("/member", member);
 app.use("/api/blog", blog);
