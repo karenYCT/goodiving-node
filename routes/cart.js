@@ -338,10 +338,10 @@ router.patch("/checkout", async (req, res) => {
 
     // 5. 返回支付URL
     const paymentUrl = response.data.info.paymentUrl.web;
-    res.status(200).json({ paymentUrl });
+    res.status(200).json({ ok: true, paymentUrl });
   } catch (error) {
     console.error("訂單更新或支付請求失敗:", error);
-    res.status(500).json({ message: "訂單更新或支付請求失敗" });
+    res.status(500).json({ ok: false, message: "訂單更新或支付請求失敗" });
   }
 });
 
@@ -394,14 +394,56 @@ router.get("/checkout/linepay/confirm", async (req, res) => {
       );
 
       // 跳轉到成功頁面
-      return res.redirect("http://localhost:3000/cart/complete");
+      return res.redirect(
+        `http://localhost:3000/cart/complete?orderId=${orderId}`
+      );
     } else {
       // 支付失敗，跳轉到失敗頁面
-      return res.redirect("http://localhost:3000/cart/cancel");
+      return res.redirect(
+        "http://localhost:3000/cart/cancel?orderId=${orderId}"
+      );
     }
   } catch (error) {
     console.error("支付確認失敗:", error);
     res.status(500).json({ message: "支付確認失敗" });
+  }
+});
+
+// 訂單完成頁(用JWT middleware驗證)
+router.get("/complete", async (req, res) => {
+  const orderId = req.query.orderId;
+  try {
+    const [orders] = await db.execute(
+      `SELECT
+        p.img_url image,
+        p.title,
+        p.price,
+        oi.quantity,
+        v.size,
+        v.color
+      FROM order_items oi
+      JOIN product_variants v ON oi.product_variant_id = v.product_variant_id
+      JOIN product_list p ON v.product_id = p.product_id
+      WHERE oi.order_id = ?`,
+      [orderId]
+    );
+
+    if (orders.length === 0) {
+      return res.status(404).json({ message: "找不到訂單" });
+    }
+
+    const [info] = await db.execute(
+      `SELECT payment_method, shipping_method, shipping_address FROM order_list WHERE order_id = ?`,
+      [orderId]
+    );
+    const { payment_method, shipping_method, shipping_address } = info[0];
+
+    res
+      .status(200)
+      .json({ orders, payment_method, shipping_method, shipping_address });
+  } catch (error) {
+    console.error("查詢訂單失敗:", error);
+    res.status(500).json({ message: "伺服器錯誤" });
   }
 });
 
