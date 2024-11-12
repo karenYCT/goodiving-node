@@ -44,18 +44,18 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
 // ************* 自訂的頂層 middleware *************
-// app.use((req, res, next) => {
-//   let auth = req.get("Authorization");
-//   if (auth && auth.indexOf("Bearer " === 0)) {
-//     let token = auth.slice(7);
-//     try {
-//       req.user_jwt = jwt.verify(token, process.env.JWT_KEY);
-//     } catch (ex) {
-//       console.log(ex);
-//     }
-//   }
-//   next();
-// });
+app.use((req, res, next) => {
+  let auth = req.get("Authorization");
+  if (auth && auth.indexOf("Bearer " === 0)) {
+    let token = auth.slice(7);
+    try {
+      req.user_jwt = jwt.verify(token, process.env.JWT_KEY);
+    } catch (ex) {
+      console.log(ex);
+    }
+  }
+  next();
+});
 
 // app.use自己import的檔案跟導入的變數名
 app.use("/products", products);
@@ -71,22 +71,22 @@ app.use("/cart", cart);
 app.use("/uploads", express.static("public/uploads"));
 
 // socket.io : 當有新用戶連接時
-io.on('connection', (socket) => {
-  console.log('A user connected: ' + socket.id);
+// io.on('connection', (socket) => {
+//   console.log('A user connected: ' + socket.id);
 
-  // 處理訊息接收
-  socket.on('send_message', (message) => {
-    console.log('Message received: ', message);
+//   // 處理訊息接收
+//   socket.on('send_message', (message) => {
+//     console.log('Message received: ', message);
 
-    // 廣播訊息(給所有連接的用戶，除發送者外)
-    socket.broadcast.emit('receive_message', message);
-  });
+//     // 廣播訊息(給所有連接的用戶，除發送者外)
+//     socket.broadcast.emit('receive_message', message);
+//   });
 
-  // 用戶斷線
-  socket.on('disconnect', () => {
-    console.log('User disconnected');
-  });
-});
+//   // 用戶斷線
+//   socket.on('disconnect', () => {
+//     console.log('User disconnected');
+//   });
+// });
 
 // 測試路由
 app.get("/test", async (req, res) => {

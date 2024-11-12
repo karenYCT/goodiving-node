@@ -4,6 +4,7 @@ import express from "express";
 import db from "../utils/connect-mysql.js";
 import { z } from "zod";
 import bcrypt from "bcrypt";
+import upload from "../utils/upload.js";
 
 const router = express.Router();
 
@@ -63,7 +64,7 @@ router.put("/modify", async (req, res) => {
     user_address: address,
     user_city: city,
   };
-  console.log("看一下檢查通過後的data:", data)
+  console.log("看一下檢查通過後的data:", data);
 
   const sqlModifyData = `UPDATE user SET ? WHERE user_id = ?`;
   const [result] = await db.query(sqlModifyData, [data, id]);
@@ -153,5 +154,29 @@ router.put("/modifypsd", async (req, res) => {
   console.log("看一下這筆資料result：" + JSON.stringify(result, null, 4));
   res.json({ ...result, success: !!result.affectedRows });
 });
+
+// 更新大頭貼
+router.put(
+  "/upload-avatar",
+  upload.single("changeavatar"),
+  async (req, res) => {
+    const user_id = req.body.user_id;
+    const changeavatar = req.file ? req.file.filename : null; // 使用 multer 上傳的文件
+
+    if (!changeavatar || !user_id) {
+      output.error = "缺少文件或用戶 ID";
+      return res.json(output);
+    }
+
+    const sqlUploadAvatar = `UPDATE user SET profile_picture = ? WHERE user_id = ?`;
+    const [result] = await db.query(sqlUploadAvatar, [changeavatar, user_id]);
+    console.log("看一下更改圖片的result：" + JSON.stringify(result, null, 4));
+    res.json({
+      ...result,
+      success: !!result.affectedRows,
+      filename: changeavatar,
+    });
+  }
+);
 
 export default router;
