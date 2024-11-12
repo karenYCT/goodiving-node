@@ -12,6 +12,7 @@ import cart from "./routes/cart.js";
 import lesson from "./routes/lesson.js";
 
 
+
 // ************* 頂層的 middlewares *************
 const app = express();
 const corsOptions = {
@@ -51,6 +52,7 @@ app.use("/profile", memberProfile);
 app.use("/api/comment", comment);
 app.use("/cart", cart);
 app.use('/uploads', express.static('public/uploads'));
+
 
 // 測試路由
 app.get("/test", async (req, res) => {

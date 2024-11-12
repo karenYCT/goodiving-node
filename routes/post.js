@@ -1,28 +1,34 @@
-// app.js (或 server.js)
-const express = require('express');
-const app = express();
+import express from "express";
+import db from "../utils/connect-mysql.js";
 
-// 假設的資料
-const posts = [
-  { id: 1, title: '潛水教練文章1', content: '這是潛水教練文章的內容', category: '潛水教練' },
-  { id: 2, title: '氣瓶文章1', content: '這是氣瓶文章的內容', category: '氣瓶' },
-  { id: 3, title: '裝備文章1', content: '這是裝備文章的內容', category: '裝備' },
-  { id: 4, title: '課程文章1', content: '這是課程文章的內容', category: '課程' },
-  { id: 5, title: '潛點文章1', content: '這是潛點文章的內容', category: '潛點' },
-];
+// 發布文章
+router.post('/blog', async (req, res) => {
+  const { title, content, category } = req.body;
 
-// API：根據分類返回文章
-app.get('/api/posts', (req, res) => {
-  const { category } = req.query;
-  if (category && category !== '全部') {
-    const filteredPosts = posts.filter(post => post.category === category);
-    return res.json(filteredPosts);
+  if (!title || !content || !category) {
+    return res.status(400).json({ error: '所有欄位都需要填寫' });
   }
-  return res.json(posts);
+
+  try {
+    // 插入文章到資料庫
+    const result = await db.query(
+      'INSERT INTO blog (title, content, category) VALUES (?, ?, ?)',
+      [title, content, category]
+    );
+
+    // 返回新創建的文章資料
+    const newPost = {
+      id: result.blogId,
+      title,
+      content,
+      category,
+    };
+
+    res.status(201).json(newPost);
+  } catch (error) {
+    console.error('文章發布錯誤:', error);
+    res.status(500).json({ error: '內部伺服器錯誤' });
+  }
 });
 
-const port = 3001;
-app.listen(port, () => {
-  console.log(`Server running on http://localhost:${port}`);
-});
-  
+module.exports = router;
