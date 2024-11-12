@@ -1,6 +1,7 @@
 import db from "../utils/connect-sql.js";
 const router = express.Router();
 import moment from "moment-timezone";
+import express from "express";
 
 router.get("/", async (req, res) => {
   res.locals.title = "goodiving - " + res.locals.title;

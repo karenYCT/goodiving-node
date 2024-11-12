@@ -1,16 +1,15 @@
 import express from "express";
-import db from "../utils/connect-mysql.js";
 import upload from "../utils/upload.js";
+import db from "../utils/connect-mysql.js";
 
-const app = express();
+const router = express.Router();
 
 // /api/blog GET 查詢
-import express from "express";
-import db from "../utils/connect-mysql.js";
-const app = express();
+
+
 
 // /api/blog GET 查詢 (新增分頁和搜尋功能)
-app.get('/api/blog', async function (req, res) {
+router.get('/api/blog', async function (req, res) {
   try {
     const perPage = 10; // 每頁最多顯示 10 筆資料
     let page = parseInt(req.query.page) || 1; // 預設從第 1 頁開始
@@ -60,7 +59,7 @@ app.get('/api/blog', async function (req, res) {
 });
 
 // /api/blog POST 新增
-app.post('/api/blog', async function (req, res) {  
+router.post('/api/blog', async function (req, res) {  
   try {
     const { name, content, blog_category } = req.body;  
     const userId = 1;  // 假設使用者 ID 固定為 1
@@ -84,7 +83,7 @@ app.post('/api/blog', async function (req, res) {
 });
 
 // PUT /api/blog PATCH 更新文章
-app.patch('/api/blog/:id', async function (req, res) {
+router.patch('/api/blog/:id', async function (req, res) {
   try {
     const postId = req.params.id;
     const { title, content } = req.body;
@@ -104,7 +103,7 @@ app.patch('/api/blog/:id', async function (req, res) {
 });
 
 // /api/blog/category
-app.get('/api/blog/category', async function (req, res) {
+router.get('/api/blog/category', async function (req, res) {
   try {
     const sql = `SELECT * FROM blog_category ORDER BY id`;
     const [rows] = await db.query(sql);
@@ -115,7 +114,7 @@ app.get('/api/blog/category', async function (req, res) {
 });
 
 // /api/blog/:id 取得單一文章
-app.get('/api/blog/:id', async function (req, res) {
+router.get('/api/blog/:id', async function (req, res) {
   const postId = req.params.id;
   try {
     const sql = `
@@ -132,82 +131,7 @@ app.get('/api/blog/:id', async function (req, res) {
   }
 });
 
-export default app;
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-app.get('/',async function (req, res) {
+router.get('/',async function (req, res) {
   try{
     let sql = `SELECT b.*, u.user_full_name FROM blog b JOIN user u ON b.user_id=u.user_id `;
     if(req.query.keyword){
@@ -222,7 +146,7 @@ app.get('/',async function (req, res) {
 });
 
 // /api/blog POST 新增
-app.post('/', upload.none(), async function (req, res) {  // 設定路由為新增文章
+router.post('/', upload.none(), async function (req, res) {  // 設定路由為新增文章
   try {
     const { title: name, content, category } = req.body;  // 從請求的 body 中獲取標題、內容、分類
     const userId = 1;  // 假設使用者 ID 固定為 1，通常應該從登入系統取得
@@ -253,7 +177,7 @@ app.post('/', upload.none(), async function (req, res) {  // 設定路由為新�
 
 // PUT
 // /api/blog PATCH 更新(部分資料)
-app.patch('/:id', async function (req, res) {
+router.patch('/:id', async function (req, res) {
   try {
     const postId = req.params.id;  // 獲取文章 ID
     const { title, content } = req.body;  // 從請求體中獲取新的標題和內容
@@ -276,7 +200,7 @@ app.patch('/:id', async function (req, res) {
 
 
 // /api/blog/cateory
-app.get('/category',async function (req, res) {
+router.get('/category',async function (req, res) {
   try{
     const sql = `SELECT * FROM blog_category ORDER BY id`;
     const [rows] = await db.query(sql);
@@ -286,7 +210,7 @@ app.get('/category',async function (req, res) {
   }
 });
 
-app.get('/:id',async function (req, res) {
+router.get('/:id',async function (req, res) {
   const postId = req.params.id
   try{
     const sql = `SELECT b.*, u.user_full_name
@@ -319,4 +243,4 @@ WHERE b.id = ?;`; //單一則文章
 //   }
 // });
 
-export default app;
+export default router;

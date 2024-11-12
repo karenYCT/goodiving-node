@@ -20,10 +20,9 @@ const app = express();
 const server = http.createServer(app);
 const io = new Server(server, {
   cors: {
-    origin: "http://localhost:3000", // 或是你的前端伺服器位置
-    methods: ["GET", "POST"]
-  }
-  
+    origin: "http://localhost:3000",
+    methods: ["GET", "POST"],
+  },
 });
 
 // 取得檔案URL
@@ -91,7 +90,6 @@ app.use("/uploads", express.static("public/uploads"));
 //   });
 // });
 
-
 // 測試路由
 app.get("/test", async (req, res) => {
   try {
@@ -108,7 +106,6 @@ app.get("/test", async (req, res) => {
 
 //************放靜態內容資料夾的位置************
 app.use(express.static("public"));
-
 
 //*************  404 頁面要在所有的路由後面  *************
 app.use((req, res) => {
