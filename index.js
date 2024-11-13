@@ -70,7 +70,7 @@ app.use("/auth", authRoutes);
 app.use("/profile", memberProfile);
 app.use("/api/comment", comment);
 app.use("/cart", cart);
-app.use("/uploads", express.static("public/uploads"));
+//app.use("/uploads", express.static("public/uploads"));
 
 // socket.io : 當有新用戶連接時
 // io.on('connection', (socket) => {
@@ -106,7 +106,7 @@ app.get("/test", async (req, res) => {
 
 //************放靜態內容資料夾的位置************
 app.use(express.static("public"));
-
+app.use('/img', express.static('public/img'));
 //*************  404 頁面要在所有的路由後面  *************
 app.use((req, res) => {
   //   res.status(404).send("<h1>走錯路了</h1>");

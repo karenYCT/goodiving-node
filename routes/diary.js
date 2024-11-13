@@ -2,10 +2,11 @@ import express from "express";
 import db from "../utils/connect-mysql.js";
 import upload from "../utils/upload.js";
 import authMiddleware from "../middlewares/authMiddleware.js";
+import path from 'path';
 
 const router = express.Router();
 
-// 取得特定區域的潛點（diaryForm潛點區域和潛點名稱）- 不需要驗證
+// 取得特定區域的潛點（diaryForm潛點區域和潛點名稱）
 router.get("/sites/:region_id", async (req, res) => {
   try {
     const { region_id } = req.params;
@@ -27,7 +28,7 @@ router.get("/sites/:region_id", async (req, res) => {
   }
 });
 
-// 取得潛水方式- 不需要驗證
+// 取得潛水方式
 router.get("/methods", async (req, res) => {
   try {
     const [methods] = await db.query(`
@@ -43,7 +44,7 @@ router.get("/methods", async (req, res) => {
   }
 });
 
-//上傳圖片（最多三張）- 需要驗證
+//上傳圖片（最多三張）
 router.post("/upload", upload.array("images", 3),async (req, res) => {
   console.log("收到上傳請求");
   console.log("檔案資訊:", req.files);
@@ -56,7 +57,7 @@ router.post("/upload", upload.array("images", 3),async (req, res) => {
     const files = req.files.map((file) => ({
       filename: file.filename,
       originalname: file.originalname,
-      path: `/uploads/${file.filename}`,
+      path: `/img/${file.filename}`,
       size: file.size,
     }));
     res.json(req.files);
@@ -67,11 +68,11 @@ router.post("/upload", upload.array("images", 3),async (req, res) => {
 });
 
 //獲取已上傳的圖片
-router.get("/images/:filename" , (req, res) => {
+router.get("/img/:filename" , (req, res) => {
   try {
     const { filename } = req.params;
     // 使用相對路徑
-    const filepath = path.join("public/images/diary", filename);
+    const filepath = path.join("public/img", filename);
 
     res.sendFile(filepath, { root: "." }, (err) => {
       if (err) {
@@ -85,11 +86,16 @@ router.get("/images/:filename" , (req, res) => {
   }
 });
 
+//獲取所有日誌（包含區域篩選）
 router.get("/logs", async (req, res) => {
   try {
-    const sql = `
+    const { region_id } = req.query;
+    console.log('收到的區域篩選:', region_id);
+
+    let sql = `
       SELECT 
         l.log_id,
+        l.site_id, 
         l.date,
         l.max_depth,
         l.bottom_time,
@@ -111,10 +117,22 @@ router.get("/logs", async (req, res) => {
       LEFT JOIN visibility v ON l.visi_id = v.visi_id
       LEFT JOIN user u ON l.user_id = u.user_id
       WHERE l.is_draft = 0
-      ORDER BY l.created_at DESC
     `;
-    
-    const [logs] = await db.query(sql);
+    const params = [];
+
+    //加入區域過路條件
+    if (region_id && region_id !== "all") {
+      sql += " AND s.region_id = ?";
+      params.push(region_id);
+      console.log('過濾後的地區:', region_id); 
+    }
+
+    sql += `ORDER BY l.created_at DESC`;
+    console.log('獲取日誌列表的SQL:', sql, '參數:', params);
+
+    //執行主查詢
+    const [logs] = await db.query(sql, params);
+    console.log('獲取日誌列表的結果:', logs);
 
     // 獲取每個日誌的圖片
     const logsWithImages = await Promise.all(
@@ -136,7 +154,7 @@ router.get("/logs", async (req, res) => {
   }
 });
 
-//新增潛水日誌 - 需要驗證
+//新增潛水日誌 
 router.post("/add" , async (req, res) => {
   const output = {
     success: false,
@@ -232,7 +250,8 @@ router.post("/add" , async (req, res) => {
 
       const imageValues = images.map((img) => [
         log_id,
-        img.path,
+        // `/img/${file.filename}`,
+        `/img/${img.path}`,
         img.isMain || false,
       ]);
       await db.query(imagesSql, [imageValues]);
@@ -256,7 +275,8 @@ router.post("/add" , async (req, res) => {
   }
   res.json(output);
 });
-//讀取單一日誌的內容- 需要驗證
+
+//讀取單一日誌的內容
 router.get("/:diary_id", async (req, res) => {
   try {
     const { diary_id } = req.params;
@@ -273,7 +293,6 @@ router.get("/:diary_id", async (req, res) => {
         l.created_at,
         s.site_name,
         sr.region_name,
-        s.max_depth AS site_max_depth,
         m.method_name,
         v.visi_name AS visibility,
         u.user_full_name
@@ -285,14 +304,8 @@ router.get("/:diary_id", async (req, res) => {
       LEFT JOIN user u ON l.user_id = u.user_id
       WHERE l.log_id = ?
     `;
-    
-    // 修正：加入參數到查詢中
+
     const [rows] = await db.query(sql, [diary_id]);
-    
-    // if (rows.length === 0) {
-    //   return res.status(404).json({ error: "日誌不存在或無權限查看" });
-    // }
-    
     res.json(rows[0]);
   } catch (error) {
     console.error('查詢出錯:', error);
@@ -302,7 +315,6 @@ router.get("/:diary_id", async (req, res) => {
     });
   }
 });
-
 
 //讀取單一日誌的照片
 router.get("/images/:diary_id" , async (req, res) => {
