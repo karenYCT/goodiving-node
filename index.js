@@ -61,6 +61,13 @@ app.use((req, res, next) => {
 
 // app.use自己import的檔案跟導入的變數名
 app.use("/diary", diary);
+// app.use("/diary", (req, res, next) => {
+//   if (!req.user_jwt) {
+//     return res.status(401).json({ message: "需要登入" });
+//   }
+//   next();
+// }, diary);
+
 app.use("/products", products);
 app.use("/divesite", divesite);
 app.use("/lesson", lesson);

@@ -3,6 +3,7 @@ import db from "../utils/connect-mysql.js";
 import upload from "../utils/upload.js";
 import authMiddleware from "../middlewares/authMiddleware.js";
 import path from 'path';
+import { log } from "console";
 
 const router = express.Router();
 
@@ -161,7 +162,6 @@ router.post("/add" , async (req, res) => {
     errors: {},
     data: null,
   };
-
   //資料驗證必填欄位
   try {
     console.log("收到的請求資料:", req.body); // 添加記錄
@@ -333,6 +333,166 @@ router.get("/images/:diary_id" , async (req, res) => {
   }
 });
 
+// 刪除單筆日誌
+router.delete("/:log_id", async (req, res) => {
+  const output = {
+    success: false,
+    info: "",
+  };
 
+  let log_id = parseInt(req.params.ab_id) || 0;
+
+  if (!log_id) {
+    output.info = "日誌編號錯誤";
+    return res.json(output);
+  }
+  
+  try{
+    //1.先刪除圖片
+    const [imageResult] = await db.query(`DELETE FROM log_img WHERE log_id = ?`, [log_id]);
+    //2.再刪除日誌
+    const [result] = await db.query(`DELETE FROM log WHERE log_id = ?`, [log_id]);
+
+    output.success = !!result.affectedRows;
+    if (!output.success){
+      output.info = "刪除失敗";
+    }
+  }catch(ex){
+    output.info = "刪除時發生錯誤";
+    output.ex = ex;
+    console.error('刪除日誌時發生錯誤', ex);
+  }
+  return res.json(output);
+});
+
+// 批量刪除日誌（POST /diary/batch-delete）
+router.post("/batch-delete", async (req, res) => {
+  const output = {
+    success: false,
+    info: "",
+  };
+
+  const { logIds } = req.body;
+  //驗證傳入id的陣列
+  if (!Array.isArray(logIds) || logIds.length === 0) {
+    output.info = "請提供要刪除的日誌編號";
+    return res.json(output);
+  }
+  //確保所有id都是數字
+  const validLogIds = logIds.map(id => parseInt(id)).filter(id => id > 0);
+  if (validLogIds.length === 0) {
+    output.info = "請提供有效的日誌編號";
+    return res.json(output);
+  }
+  try {
+    //1.先刪除圖片
+    const [imageResult] = await db.query(`DELETE FROM log_img WHERE log_id IN (?)`, [validLogIds]);
+    //2.再刪除日誌
+    const [result] = await db.query(`DELETE FROM log WHERE log_id IN (?)`, [validLogIds]);
+    output.success = !!result.affectedRows;
+    if (!output.success){
+      output.info = "刪除失敗";
+    }else{
+      output.info = '`成功刪除 ${result.affectedRows} 筆日誌`';
+    }
+  } catch (ex) {
+    output.info = "刪除時發生錯誤";
+    output.ex = ex;
+    console.error('批量刪除日誌時發生錯誤', ex);
+  }
+  return res.json(output);
+});
+
+//更新日誌
+router.put("/update/:log_id", async (req, res) => {
+  try {
+    const logId = req.params.log_id;
+    const {
+      date,
+      site_id,
+      user_id,
+      max_depth,
+      bottom_time,
+      water_temp,
+      visi_id,
+      method_id,
+      log_exp,
+      is_privacy,
+      images,
+    } = req.body;
+
+    // 1. 更新日誌基本資料
+    const [updateResult] = await pool.execute(
+      `UPDATE log_list SET 
+        date = ?,
+        site_id = ?,
+        user_id = ?,
+        max_depth = ?,
+        bottom_time = ?,
+        water_temp = ?,
+        visi_id = ?,
+        method_id = ?,
+        log_exp = ?,
+        is_privacy = ?,
+        updated_at = NOW()
+      WHERE log_id = ?`,
+      [
+        date,
+        site_id,
+        user_id,
+        max_depth || null,
+        bottom_time || null,
+        water_temp || null,
+        visi_id,
+        method_id || null,
+        log_exp || '',
+        is_privacy,
+        logId,
+      ]
+    );
+
+    if (updateResult.affectedRows === 0) {
+      return res.status(404).json({ 
+        sucess: false,
+        error: { message: '找不到要更新的日誌' },
+      });
+    }
+
+    // 2.更新圖片
+    if (images && images.length > 0) {
+      await pool.execute(
+        `DELETE FROM log_img WHERE log_id = ?`,
+        [logId]
+      );
+      //插入新增的圖片
+      const imageValues = images.map( img =>
+        [logId, `/img/${img.url}`, img.isMain ? 1 : 0]
+      );
+
+      if(imageValues.length > 0){
+        await pool.execute(
+          `INSERT INTO log_img (log_id, img_url, is_main) VALUES ?`,
+          [imageValues]
+        );
+      }
+    }
+    //組合完整的日誌資料
+    const response ={
+      success: true,
+      data: {
+        ...updateLog[0],
+        images: updateImages,
+      },
+    };
+    res.json(response);
+  } catch (error) {
+    console.error('更新日誌時發生錯誤', error);
+    res.status(500).json({ 
+      success: false, 
+      error: { message: '更新日誌時發生錯誤' 
+      },
+    });
+  }
+});
 
 export default router;
