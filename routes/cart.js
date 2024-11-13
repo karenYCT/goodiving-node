@@ -205,6 +205,51 @@ router.post("/checkout", async (req, res) => {
   }
 });
 
+// 取消訂單返回購物車
+router.post("/checkout/rollback", async (req, res) => {
+  const { userId, orderId } = req.body;
+
+  try {
+    // 1. 查詢訂單中的商品
+    const [orderItems] = await db.execute(
+      "SELECT product_variant_id, quantity FROM order_items WHERE order_id = ?",
+      [orderId]
+    );
+
+    // 2. 處理將商品加回購物車的邏輯
+    for (let item of orderItems) {
+      const [existingCartItem] = await db.execute(
+        "SELECT quantity FROM cart_list WHERE user_id = ? AND product_variant_id = ?",
+        [userId, item.product_variant_id]
+      );
+
+      if (existingCartItem.length > 0) {
+        // 3. 若購物車中已有相同的商品，則合併數量
+        const newQuantity = existingCartItem[0].quantity + item.quantity;
+        await db.execute(
+          "UPDATE cart_list SET quantity = ? WHERE user_id = ? AND product_variant_id = ?",
+          [newQuantity, userId, item.product_variant_id]
+        );
+      } else {
+        // 4. 若購物車中沒有該商品，則插入新的商品記錄
+        await db.execute(
+          "INSERT INTO cart_list (user_id, product_variant_id, quantity) VALUES (?, ?, ?)",
+          [userId, item.product_variant_id, item.quantity]
+        );
+      }
+    }
+
+    // 5. 刪除訂單及其訂單項目
+    await db.execute("DELETE FROM order_items WHERE order_id = ?", [orderId]);
+    await db.execute("DELETE FROM order_list WHERE order_id = ?", [orderId]);
+
+    res.status(200).json({ message: "訂單已取消，商品已返回購物車" });
+  } catch (error) {
+    console.error("返回修改過程中發生錯誤:", error);
+    res.status(500).json({ message: "返回修改失敗" });
+  }
+});
+
 // 讀取訂單(用JWT middleware驗證)
 router.get("/checkout", async (req, res) => {
   const user_id = req.headers["x-user-id"];
