@@ -3,6 +3,7 @@ import db from "../utils/connect-sql.js";
 import mysql from "mysql2/promise";
 import axios from "axios";
 import { generateSignature } from "../utils/linepay.js";
+import { set } from "zod";
 const router = express.Router();
 const channelId = process.env.channel_id;
 const channelSecret = process.env.channel_secret;
@@ -11,6 +12,60 @@ const linePayAPIUrl = process.env.linepay_api_url;
 // 新增產品到購物車
 router.post("/add", async (req, res) => {
   const { variant_id, user_id } = req.body;
+  let sameItem = false;
+  // 檢查資料庫中是否已經有此會員和商品變體
+  const query = `
+    SELECT cart_id, quantity
+    FROM cart_list
+    WHERE user_id = ? AND product_variant_id = ?
+  `;
+
+  try {
+    const [results] = await db.execute(query, [user_id, variant_id]);
+
+    if (results.length === 0) {
+      // 購物車中沒有此商品，新增一筆
+      const insertQuery = `
+        INSERT INTO cart_list (user_id, product_variant_id, quantity)
+        VALUES (?, ?, 1)
+      `;
+      const [result] = await db.execute(insertQuery, [user_id, variant_id]);
+      res.status(201).json({
+        message: "Item added to cart",
+        cart_id: result.insertId,
+      }); // 將新增的 cart_id 回傳
+    } else {
+      // 購物車中已經有此商品，更新數量
+      const cart_id = results[0].cart_id;
+      const newQuantity = results[0].quantity + 1;
+      sameItem = true;
+      const updateQuery = `
+        UPDATE cart_list
+        SET quantity = ?
+        WHERE cart_id = ?
+      `;
+      await db.execute(updateQuery, [newQuantity, cart_id]);
+      res.status(200).json({
+        message: "Item quantity updated",
+        cart_id,
+        newQuantity,
+        sameItem,
+      });
+    }
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ ok: false, message: "Database error" });
+  }
+});
+
+// 快捷新增產品到購物車
+router.post("/quick_add", async (req, res) => {
+  const { pid, user_id } = req.body;
+  let sameItem = false;
+  // 用pid抓出變體id的第一筆
+  const sql = `SELECT product_variant_id FROM product_variants WHERE product_id = ? LIMIT 1`;
+  const [rows] = await db.query(sql, [pid]);
+  const variant_id = rows[0].product_variant_id;
 
   // 檢查資料庫中是否已經有此會員和商品變體
   const query = `
@@ -30,7 +85,6 @@ router.post("/add", async (req, res) => {
       `;
       const [result] = await db.execute(insertQuery, [user_id, variant_id]);
       res.status(201).json({
-        ok: true,
         message: "Item added to cart",
         cart_id: result.insertId,
       }); // 將新增的 cart_id 回傳
@@ -38,7 +92,7 @@ router.post("/add", async (req, res) => {
       // 購物車中已經有此商品，更新數量
       const cart_id = results[0].cart_id;
       const newQuantity = results[0].quantity + 1;
-
+      sameItem = true;
       const updateQuery = `
         UPDATE cart_list
         SET quantity = ?
@@ -46,10 +100,10 @@ router.post("/add", async (req, res) => {
       `;
       await db.execute(updateQuery, [newQuantity, cart_id]);
       res.status(200).json({
-        ok: true,
         message: "Item quantity updated",
         cart_id,
         newQuantity,
+        sameItem,
       });
     }
   } catch (err) {
@@ -380,7 +434,7 @@ router.patch("/checkout", async (req, res) => {
         },
       }
     );
-
+    console.log({ 請求支付回應: response.data.returnCode });
     // 5. 返回支付URL
     const paymentUrl = response.data.info.paymentUrl.web;
     res.status(200).json({ ok: true, paymentUrl });
@@ -428,8 +482,7 @@ router.get("/checkout/linepay/confirm", async (req, res) => {
         },
       }
     );
-    console.log(response);
-
+    console.log({ 支付確認回應: response.data.returnCode });
     // 3. 處理支付結果
     if (response.data.returnCode === "0000") {
       // 支付成功，更新資料庫的 is_paid = true
@@ -438,10 +491,12 @@ router.get("/checkout/linepay/confirm", async (req, res) => {
         [orderId]
       );
 
+      setTimeout(() => {
+        return res.redirect(
+          `http://localhost:3000/cart/complete?orderId=${orderId}`
+        );
+      }, 5000);
       // 跳轉到成功頁面
-      return res.redirect(
-        `http://localhost:3000/cart/complete?orderId=${orderId}`
-      );
     } else {
       // 支付失敗，跳轉到失敗頁面
       return res.redirect(
@@ -507,7 +562,9 @@ router.get("/:user_id", async (req, res) => {
     const [cartItems] = await db.execute(sql1, [user_id]);
 
     if (cartItems.length === 0) {
-      return res.status(404).json({ message: "購物車為空或用戶不存在" });
+      return res
+        .status(404)
+        .json({ message: "購物車為空或用戶不存在", user_id });
     }
 
     // 取出所有的 product_variant_id(陣列)
