@@ -42,7 +42,6 @@ router.get("/", async (req, res) => {
     params.push(type);
   }
 
-  // TODO: 以下同一個分類無法複選
   if (dept) {
     if (Array.isArray(dept)) {
       sql += ` AND l.cert_dept_id IN (${dept.map(() => '?').join(', ')})`;
