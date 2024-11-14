@@ -3,9 +3,182 @@ import db from "../utils/connect-mysql.js";
 import upload from "../utils/upload.js";
 import authMiddleware from "../middlewares/authMiddleware.js";
 import path from 'path';
-import { log } from "console";
+
 
 const router = express.Router();
+
+//獲取草稿列表
+router.get("/drafts", async (req, res) => {
+  try {
+    const { region_id } = req.query;
+    console.log('收到的區域篩選:', region_id);
+
+    let sql = `
+      SELECT 
+        l.log_id,
+        l.site_id, 
+        l.date,
+        l.max_depth,
+        l.bottom_time,
+        l.water_temp,
+        l.visi_id,
+        l.log_exp,
+        l.is_privacy,
+        l.is_draft,
+        l.created_at,
+        s.site_name,
+        s.region_id,
+        sr.region_name,
+        m.method_name,
+        m.method_id,
+        v.visi_name AS visibility,
+        u.user_full_name
+      FROM log l
+      LEFT JOIN site_info s ON l.site_id = s.site_id
+      LEFT JOIN site_region sr ON s.region_id = sr.region_id
+      LEFT JOIN method m ON l.method_id = m.method_id
+      LEFT JOIN visibility v ON l.visi_id = v.visi_id
+      LEFT JOIN user u ON l.user_id = u.user_id
+      WHERE l.is_draft = 1
+    `;
+    const params = [];
+
+    if (region_id && region_id !== "all") {
+      sql += " AND s.region_id = ?";
+      params.push(region_id);
+      console.log('過濾後的地區:', region_id);
+    }
+
+    sql += `ORDER BY l.created_at DESC`;
+    console.log('獲取草稿列表的SQL:', sql, '參數:', params);
+
+    const [drafts] = await db.query(sql, params);
+    console.log('獲取草稿列表的結果:', drafts);
+
+    const draftsWithImages = await Promise.all(
+      drafts.map(async (draft) => {
+        const [images] = await db.query(
+          `SELECT img_id, img_url, is_main 
+          FROM log_img 
+          WHERE log_id = ?`,
+          [draft.log_id]
+        );
+        return { ...draft, images };
+      })
+    );
+
+    res.json(draftsWithImages);
+  } catch (error) {
+    console.error('獲取草稿列表失敗:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+//儲存新草稿
+router.post("/draft" , async (req, res) => {
+  const output = {
+    success: false,
+    errors: {},
+    data: null,
+  };
+
+  try {
+    console.log("收到的請求資料:", req.body); // 添加記錄
+
+    //準備要儲存的資料
+    const {
+      date,
+      site_id,
+      user_id,
+      max_depth,
+      bottom_time,
+      water_temp,
+      visi_id,
+      method_id,
+      log_exp,
+      is_privacy,
+      is_draft,
+      images = [],
+    } = req.body;
+
+    // 轉換日期格式
+    const formattedDate = new Date(date).toISOString().slice(0, 10);
+    console.log("格式化後的日期:", formattedDate); // 添加記錄
+
+    //新增草稿
+    const sql = `
+    INSERT INTO log (
+        date, 
+        site_id, 
+        user_id, 
+        max_depth, 
+        bottom_time, 
+        water_temp, 
+        visi_id,
+        method_id,
+        log_exp,
+        is_privacy,
+        is_draft,
+        created_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())
+    `;
+
+    const params = [
+      formattedDate, // 使用格式化後的日期
+      site_id,
+      user_id,
+      max_depth || null,
+      bottom_time || null,
+      water_temp || null,
+      visi_id || null,
+      method_id || null,
+      log_exp || null,
+      is_privacy || false,
+      is_draft === 1,
+    ];
+    console.log("SQL 參數:", params); // 添加記錄
+
+    const [result] = await db.query(sql, params);
+    console.log("SQL 執行結果:", result); // 添加記錄
+
+    const log_id = result.insertId;
+
+    //新增圖片
+    if (images && images.length > 0) {
+      console.log("準備插入圖片:", images); // 添加記錄
+
+      const imagesSql = `
+      INSERT INTO log_img (log_id, img_url, is_main)
+      VALUES ?
+    `;
+
+      const imageValues = images.map((img) => [
+        log_id,
+        // `/img/${file.filename}`,
+        `/img/${img.path}`,
+        img.isMain || false,
+      ]);
+      await db.query(imagesSql, [imageValues]);
+    }
+
+    output.success = true;
+    output.data = {
+      log_id,
+      message: "草稿儲存成功",
+    };
+
+    // 直接回傳結果
+    return res.json(output);
+  } catch (error) {
+    console.error("儲存草稿錯誤:", error);
+    output.error = {
+      message: "系統錯誤，儲存失敗",
+      error: error.message,
+    };
+    return res.status(500).json(output);
+  }
+});
+
 
 // 取得特定區域的潛點（diaryForm潛點區域和潛點名稱）
 router.get("/sites/:region_id", async (req, res) => {
@@ -101,6 +274,7 @@ router.get("/logs", async (req, res) => {
         l.max_depth,
         l.bottom_time,
         l.water_temp,
+        l.visi_id,
         l.log_exp,
         l.is_privacy,
         l.created_at,
@@ -276,6 +450,7 @@ router.post("/add" , async (req, res) => {
   res.json(output);
 });
 
+
 //讀取單一日誌的內容
 router.get("/:diary_id", async (req, res) => {
   try {
@@ -288,11 +463,15 @@ router.get("/:diary_id", async (req, res) => {
         l.max_depth,
         l.bottom_time,
         l.water_temp,
+        l.visi_id,
+        l.method_id,
         l.log_exp,
         l.is_privacy,
+        l.is_draft,
         l.created_at,
         s.site_name,
         sr.region_name,
+        m.method_id,
         m.method_name,
         v.visi_name AS visibility,
         u.user_full_name
@@ -407,23 +586,45 @@ router.post("/batch-delete", async (req, res) => {
 router.put("/update/:log_id", async (req, res) => {
   try {
     const logId = req.params.log_id;
+
+    // 1. 先檢查日誌是否存在
+    const [existingLog] = await db.query(
+    `SELECT l.*, m.method_name, m.method_id
+    FROM log l
+    LEFT JOIN method m ON l.method_id = m.method_id
+    WHERE l.log_id = ?`,
+    [logId]
+    );
+
+    if (!existingLog || existingLog.length === 0) {
+      return res.status(404).json({
+        success: false,
+        error: {
+          message: '找不到要更新的日誌'
+        }
+      });
+    }
+
+    const currentLog = existingLog[0];  
+
+    // 2. 從請求中獲取資料，使用現有資料作為預設值
     const {
-      date,
-      site_id,
-      user_id,
-      max_depth,
-      bottom_time,
-      water_temp,
-      visi_id,
-      method_id,
-      log_exp,
-      is_privacy,
+      date = currentLog.date,
+      site_id = currentLog.site_id,
+      user_id = currentLog.user_id,
+      max_depth = currentLog.max_depth,
+      bottom_time = currentLog.bottom_time,
+      water_temp = currentLog.water_temp,
+      visi_id = currentLog.visi_id,
+      method_id = currentLog.method_id,
+      log_exp = currentLog.log_exp,
+      is_privacy = currentLog.is_privacy,
       images,
     } = req.body;
 
     // 1. 更新日誌基本資料
-    const [updateResult] = await pool.execute(
-      `UPDATE log_list SET 
+    const [updateResult] = await db.query(
+      `UPDATE log SET 
         date = ?,
         site_id = ?,
         user_id = ?,
@@ -440,59 +641,304 @@ router.put("/update/:log_id", async (req, res) => {
         date,
         site_id,
         user_id,
-        max_depth || null,
-        bottom_time || null,
-        water_temp || null,
-        visi_id,
+        max_depth ?? null,
+        bottom_time ?? null,
+        water_temp ?? null,
+        visi_id || null, 
         method_id || null,
-        log_exp || '',
-        is_privacy,
-        logId,
+        log_exp ?? null,
+        is_privacy ? 1 : 0,
+        logId
       ]
     );
 
-    if (updateResult.affectedRows === 0) {
-      return res.status(404).json({ 
-        sucess: false,
-        error: { message: '找不到要更新的日誌' },
-      });
-    }
-
     // 2.更新圖片
-    if (images && images.length > 0) {
-      await pool.execute(
-        `DELETE FROM log_img WHERE log_id = ?`,
+    if (images && Array.isArray(images)) {
+      // 先刪除現有的圖片
+      await db.query(
+        'DELETE FROM log_img WHERE log_id = ?',
         [logId]
       );
-      //插入新增的圖片
-      const imageValues = images.map( img =>
-        [logId, `/img/${img.url}`, img.isMain ? 1 : 0]
-      );
 
-      if(imageValues.length > 0){
-        await pool.execute(
-          `INSERT INTO log_img (log_id, img_url, is_main) VALUES ?`,
+      // 過濾掉無效的圖片資料
+      const validImages = images.filter(img => img.img_url && img.img_url !== '/img/undefined');
+      
+      // 如果有新圖片，則插入
+      if (images.length > 0) {
+        const imageValues = validImages.map(img => [
+          logId,
+          img.img_url,
+          img.is_main
+        ]);
+
+        await db.query(
+          'INSERT INTO log_img (log_id, img_url, is_main) VALUES ?',
           [imageValues]
         );
       }
     }
-    //組合完整的日誌資料
-    const response ={
+
+    // 3. 獲取更新後的完整日誌資料
+    const [updatedLog] = await db.query(`
+      SELECT 
+        l.*,  
+        s.site_name,
+        s.region_id,
+        sr.region_name,
+        m.method_name,
+        v.visi_name AS visibility
+      FROM log l
+      LEFT JOIN site_info s ON l.site_id = s.site_id
+      LEFT JOIN site_region sr ON s.region_id = sr.region_id
+      LEFT JOIN method m ON l.method_id = m.method_id
+      LEFT JOIN visibility v ON l.visi_id = v.visi_id
+      WHERE l.log_id = ?
+    `, [logId]);
+    
+    // 4. 獲取更新後的圖片資料
+    const [updatedImages] = await db.query(`
+      SELECT img_id, img_url, is_main
+      FROM log_img
+      WHERE log_id = ?
+      ORDER BY is_main DESC
+    `, [logId]);
+
+    // 5. 回傳更新成功的響應
+    res.json({
       success: true,
       data: {
-        ...updateLog[0],
-        images: updateImages,
-      },
-    };
-    res.json(response);
+        ...updatedLog[0],
+        images: updatedImages
+      }
+    });
+
   } catch (error) {
-    console.error('更新日誌時發生錯誤', error);
+    console.error('更新日誌時發生錯誤:', error);
     res.status(500).json({ 
       success: false, 
-      error: { message: '更新日誌時發生錯誤' 
-      },
+      error: { 
+        message: '更新日誌時發生錯誤',
+        details: error.message 
+      }
     });
   }
 });
 
+
+// 刪除草稿
+router.delete("/draft/:id", async (req, res) => {
+  const output = {
+    success: false,
+    info: "",
+  };
+    
+  try{
+    const log_id = parseInt(req.params.id);
+
+    // 確認是否為草稿
+    const [draft] = await db.query(
+      'SELECT log_id FROM log WHERE log_id = ? AND is_draft = 1',
+      [log_id]
+    );
+
+    if (!draft.length) {
+      output.info = "找不到該草稿";
+      return res.status(404).json(output);
+    }
+
+    await db.query('DELETE FROM log_img WHERE log_id = ?', [log_id]);
+    const [result] = await db.query(
+      'DELETE FROM log WHERE log_id = ? AND is_draft = 1',
+      [log_id]
+    );
+
+    output.success = !!result.affectedRows;
+    if (!output.success){
+      output.info = "刪除失敗";
+    }
+  }catch(ex){
+    output.info = "刪除時發生錯誤";
+    output.ex = ex;
+    console.error('刪除日誌時發生錯誤', ex);
+  }
+  return res.json(output);
+});
+
+//更新草稿
+router.put("/draft/:id", async (req, res) => {
+  try {
+    const logId = req.params.log_id;
+
+    // 1. 先檢查日誌是否存在
+    const [existingLog] = await db.query(
+    `SELECT l.*, m.method_name, m.method_id
+    FROM log l
+    LEFT JOIN method m ON l.method_id = m.method_id
+    WHERE l.log_id = ?`,
+    [logId]
+    );
+
+    if (!existingLog || existingLog.length === 0) {
+      return res.status(404).json({
+        success: false,
+        error: {
+          message: '找不到要更新的草稿'
+        }
+      });
+    }
+
+    const currentLog = existingLog[0];  
+
+    // 2. 從請求中獲取資料，使用現有資料作為預設值
+    const {
+      date = currentLog.date,
+      site_id = currentLog.site_id,
+      user_id = currentLog.user_id,
+      max_depth = currentLog.max_depth,
+      bottom_time = currentLog.bottom_time,
+      water_temp = currentLog.water_temp,
+      visi_id = currentLog.visi_id,
+      method_id = currentLog.method_id,
+      log_exp = currentLog.log_exp,
+      is_privacy = currentLog.is_privacy,
+      images,
+    } = req.body;
+
+    // 1. 更新日誌基本資料
+    const [updateResult] = await db.query(
+      `UPDATE log SET 
+        date = ?,
+        site_id = ?,
+        user_id = ?,
+        max_depth = ?,
+        bottom_time = ?,
+        water_temp = ?,
+        visi_id = ?,
+        method_id = ?,
+        log_exp = ?,
+        is_privacy = ?,
+        updated_at = NOW()
+      WHERE log_id = ?`,
+      [
+        date,
+        site_id,
+        user_id,
+        max_depth ?? null,
+        bottom_time ?? null,
+        water_temp ?? null,
+        visi_id || null, 
+        method_id || null,
+        log_exp ?? null,
+        is_privacy ? 1 : 0,
+        logId
+      ]
+    );
+
+    // 2.更新圖片
+    if (images && Array.isArray(images)) {
+      // 先刪除現有的圖片
+      await db.query(
+        'DELETE FROM log_img WHERE log_id = ?',
+        [logId]
+      );
+
+      // 過濾掉無效的圖片資料
+      const validImages = images.filter(img => img.img_url && img.img_url !== '/img/undefined');
+      
+      // 如果有新圖片，則插入
+      if (images.length > 0) {
+        const imageValues = validImages.map(img => [
+          logId,
+          img.img_url,
+          img.is_main
+        ]);
+
+        await db.query(
+          'INSERT INTO log_img (log_id, img_url, is_main) VALUES ?',
+          [imageValues]
+        );
+      }
+    }
+
+    // 3. 獲取更新後的完整日誌資料
+    const [updatedLog] = await db.query(`
+      SELECT 
+        l.*,  
+        s.site_name,
+        s.region_id,
+        sr.region_name,
+        m.method_name,
+        v.visi_name AS visibility
+      FROM log l
+      LEFT JOIN site_info s ON l.site_id = s.site_id
+      LEFT JOIN site_region sr ON s.region_id = sr.region_id
+      LEFT JOIN method m ON l.method_id = m.method_id
+      LEFT JOIN visibility v ON l.visi_id = v.visi_id
+      WHERE l.log_id = ?  AND l.is_draft = 1
+    `, [logId]);
+    
+    // 4. 獲取更新後的圖片資料
+    const [updatedImages] = await db.query(`
+      SELECT img_id, img_url, is_main
+      FROM log_img
+      WHERE log_id = ?
+      ORDER BY is_main DESC
+    `, [logId]);
+
+    // 5. 回傳更新成功的響應
+    res.json({
+      success: true,
+      data: {
+        ...updatedLog[0],
+        images: updatedImages
+      }
+    });
+
+  } catch (error) {
+    console.error('更新日誌時發生錯誤:', error);
+    res.status(500).json({ 
+      success: false, 
+      error: { 
+        message: '更新日誌時發生錯誤',
+        details: error.message 
+      }
+    });
+  }
+});
+
+
+//草稿發佈成正式日誌
+router.put('/draft/:id/publish', async (req, res) => {
+  try {
+    const draftId = req.params.id;
+
+    const [draft] =await db.query(
+      'SELECT * FROM log WHERE log_id = ? AND is_draft = 1',
+      [draftId]
+    );
+    if(!draft.length){
+      return res.status(404).json({ message: '找不到草稿日誌' });
+    }
+
+    const [result] = await db.query(
+      'UPDATE log SET is_draft = 0, updated_at = NOW() WHERE log_id = ?',
+      [draftId]
+    );
+
+    res.json({
+      success: true,
+      message: '日誌發佈成功',
+    });
+
+  } catch (error) {
+    console.error('發佈日誌時發生錯誤:', error);
+    res.status(500).json({ 
+      success: false, 
+      error: { 
+        message: '發佈日誌時發生錯誤',
+        details: error.message 
+      }
+    });
+  }
+})
 export default router;
