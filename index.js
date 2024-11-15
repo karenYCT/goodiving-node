@@ -77,7 +77,11 @@ app.use("/auth", authRoutes);
 app.use("/profile", memberProfile);
 app.use("/api/comment", comment);
 app.use("/cart", cart);
+<<<<<<< HEAD
 //app.use("/uploads", express.static("public/uploads"));
+=======
+// app.use("/uploads", express.static("public/uploads"));
+>>>>>>> tzu
 
 // socket.io : 當有新用戶連接時
 // io.on('connection', (socket) => {
