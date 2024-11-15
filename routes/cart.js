@@ -1,9 +1,7 @@
 import express from "express";
 import db from "../utils/connect-sql.js";
-import mysql from "mysql2/promise";
 import axios from "axios";
 import { generateSignature } from "../utils/linepay.js";
-import { set } from "zod";
 const router = express.Router();
 const channelId = process.env.channel_id;
 const channelSecret = process.env.channel_secret;
