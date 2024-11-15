@@ -160,6 +160,14 @@ router.put(
   "/upload-avatar",
   upload.single("changeavatar"),
   async (req, res) => {
+    //回應給前端的訊息
+    const output = {
+      success: false,
+      code: 0,
+      error: "",
+      bodyData: req.body,
+      data: {},
+    };
     const user_id = req.body.user_id;
     const changeavatar = req.file ? req.file.filename : null; // 使用 multer 上傳的文件
 
