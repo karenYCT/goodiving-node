@@ -15,7 +15,7 @@ import path from "path";
 import { fileURLToPath } from "url";
 import http from "http";
 import { Server } from "socket.io";
-
+import chat from "./routes/chat.js";
 
 const app = express();
 const server = http.createServer(app);
@@ -78,25 +78,70 @@ app.use("/auth", authRoutes);
 app.use("/profile", memberProfile);
 app.use("/api/comment", comment);
 app.use("/cart", cart);
+app.use("/chat", chat);
 // app.use("/uploads", express.static("public/uploads"));
 
 // socket.io : 當有新用戶連接時
-// io.on('connection', (socket) => {
-//   console.log('A user connected: ' + socket.id);
+const users = {};
 
-//   // 處理訊息接收
-//   socket.on('send_message', (message) => {
-//     console.log('Message received: ', message);
+io.on("connection", (socket) => {
+  console.log("A user connected: " + socket.id);
 
-//     // 廣播訊息(給所有連接的用戶，除發送者外)
-//     socket.broadcast.emit('receive_message', message);
-//   });
+  // 註冊用戶
+  socket.on("register", (user_id) => {
+    users[user_id] = socket.id;
+    console.log(`User ${user_id} connected with socket ID: ${socket.id}`);
 
-//   // 用戶斷線
-//   socket.on('disconnect', () => {
-//     console.log('User disconnected');
-//   });
-// });
+    // 發送訊息
+    socket.on("send_message", async (data) => {
+      const { sender_user_id, receiver_user_id, message, conversation_id } =
+        data;
+      console.log(
+        `Message from ${sender_user_id} to ${receiver_user_id}: ${message}`
+      );
+
+      // 儲存訊息
+      const sql = `INSERT INTO messages (conversation_id, sender_user_id, receiver_user_id, message, sent_at)
+  VALUES (?, ?, ?, ?, NOW())`;
+
+      // 儲存訊息到資料庫
+      try {
+        await db.query(sql, [
+          conversation_id,
+          sender_user_id,
+          receiver_user_id,
+          message,
+        ]);
+      } catch (error) {
+        console.error("Error saving message to database:", error);
+      }
+
+      // 傳送訊息給接收者
+      const receiverSocketId = users[receiver_user_id];
+      if (receiverSocketId) {
+        io.to(receiverSocketId).emit("receive_message", {
+          sender_user_id,
+          message,
+          sent_at: new Date(),
+        });
+      } else {
+        console.log(`User ${receiver_user_id} is not online.`);
+      }
+    });
+
+    // 當用戶斷線時，移除對應的 user_id
+    socket.on("disconnect", () => {
+      console.log("User disconnected: " + socket.id);
+      for (const [user_id, socketId] of Object.entries(users)) {
+        if (socketId === socket.id) {
+          delete users[user_id];
+          console.log(`User ${user_id} has been removed.`);
+          break;
+        }
+      }
+    });
+  });
+});
 
 // 測試路由
 app.get("/test", async (req, res) => {
@@ -114,7 +159,7 @@ app.get("/test", async (req, res) => {
 
 //************放靜態內容資料夾的位置************
 app.use(express.static("public"));
-app.use('/img', express.static('public/img'));
+app.use("/img", express.static("public/img"));
 //*************  404 頁面要在所有的路由後面  *************
 app.use((req, res) => {
   //   res.status(404).send("<h1>走錯路了</h1>");
