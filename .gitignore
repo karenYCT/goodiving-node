@@ -13,6 +13,7 @@ headers.txt
 
 tmp_uploads
 public/img
+public/images
 
 
 # Node artifact files
