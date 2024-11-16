@@ -96,25 +96,6 @@ io.on("connection", (socket) => {
     socket.on("send_message", async (data) => {
       const { sender_user_id, receiver_user_id, message, conversation_id } =
         data;
-      console.log(
-        `Message from ${sender_user_id} to ${receiver_user_id}: ${message}`
-      );
-
-      // 儲存訊息
-      const sql = `INSERT INTO messages (conversation_id, sender_user_id, receiver_user_id, message, sent_at)
-  VALUES (?, ?, ?, ?, NOW())`;
-
-      // 儲存訊息到資料庫
-      try {
-        await db.query(sql, [
-          conversation_id,
-          sender_user_id,
-          receiver_user_id,
-          message,
-        ]);
-      } catch (error) {
-        console.error("Error saving message to database:", error);
-      }
 
       // 傳送訊息給接收者
       const receiverSocketId = users[receiver_user_id];
