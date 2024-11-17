@@ -21,7 +21,7 @@ router.get("/all", async (req, res) => {
       m.method_id,
       r.region_name,
       r.region_english,
-      img.site_img_path,
+      img.img_url,
       img.site_intro
     FROM site_info si
     JOIN level l ON si.level_id = l.level_id
@@ -60,14 +60,33 @@ router.get("/region-by-lowercase/:englowercase", async (req, res) => {
 
 // 取得地區
 router.get("/region", async (req, res) => {
-  try{
-    const sql = `SELECT * FROM site_region ORDER BY region_id`;
+  try {
+    const sql = `
+      SELECT DISTINCT 
+        sr.region_id,
+        sr.region_name,
+        sr.region_english,
+        sr.region_englowercase
+      FROM site_info si
+      JOIN site_region sr ON si.region_id = sr.region_id
+      ORDER BY sr.region_id
+    `;
     const [rows] = await db.query(sql);
+    
     res.json(rows);
-  }catch(error){
+  } catch(error) {
     res.status(500).json({ error: error.message });
   }
 });
+// router.get("/region", async (req, res) => {
+//   try{
+//     const sql = `SELECT * FROM site_region ORDER BY region_id`;
+//     const [rows] = await db.query(sql);
+//     res.json(rows);
+//   }catch(error){
+//     res.status(500).json({ error: error.message });
+//   }
+// });
 
 // 取得潛水方法
 router.get("/method", async (req, res) => {
@@ -102,24 +121,34 @@ router.get("/region/:region_id", async (req, res) => {
       si.y_position,
       si.max_depth,
       si.created_at,
+      si.region_id,
       l.level_name,
+      l.level_id,
       m.method_name,
+      m.method_id,
       r.region_name,
       r.region_english,
-      img.site_img_path,
+      img.img_url,
       img.site_intro
     FROM site_info si
     JOIN level l ON si.level_id = l.level_id
     JOIN method m ON si.method_id = m.method_id
     JOIN site_region r ON si.region_id = r.region_id
     LEFT JOIN site_img img ON si.site_id = img.site_id
-    WHERE si.region_id = ? 
-    AND (img.img_main = 1 OR img.img_main IS NULL)
-    ORDER BY si.site_id`;
+    WHERE (img.img_main = 1 OR img.img_main IS NULL)`;
     
-    const [rows] = await db.query(sql, [req.params.region_id]);
+    // 如果不是 'all'，添加地區過濾條件
+    const params = [];
+    if (regionId !== 'all') {
+      sql += ` AND si.region_id = ?`;
+      params.push(regionId);
+    }
+    
+    sql += ` ORDER BY si.site_id`;
+    
+    const [rows] = await db.query(sql, params);
     res.json(rows);
-  }catch(error){
+  } catch(error) {
     res.status(500).json({ error: error.message });
   }
 });
@@ -138,7 +167,7 @@ router.get("/:site_id", async (req, res) => {
         m.method_name,
         r.region_name,
         r.region_english,
-        img.site_img_path,
+        img.img_url,
         img.site_intro
       FROM site_info si
       JOIN level l ON si.level_id = l.level_id
@@ -164,54 +193,57 @@ try {
 
   let sql = `
   SELECT 
-        si.site_id,
-        si.site_name,
-        si.x_position,
-        si.y_position,
-        si.max_depth,
-        si.created_at,
-        l.level_name,
-        m.method_name,
-        r.region_name,
-        r.region_english,
-        img.site_img_path,
-        img.site_intro
-      FROM site_info si
-      JOIN level l ON si.level_id = l.level_id
-      JOIN method m ON si.method_id = m.method_id
-      JOIN site_region r ON si.region_id = r.region_id
-      LEFT JOIN site_img img ON si.site_id = img.site_id
-      WHERE si.site_id = ?
-      AND (img.img_main = 1 OR img.img_main IS NULL)
+    si.site_id,
+    si.site_name,
+    si.x_position,
+    si.y_position,
+    si.max_depth,
+    si.created_at,
+    si.region_id,
+    l.level_name,
+    l.level_id,
+    m.method_name,
+    m.method_id,
+    r.region_name,
+    r.region_english,
+    img.img_url,
+    img.site_intro
+  FROM site_info si
+  JOIN level l ON si.level_id = l.level_id
+  JOIN method m ON si.method_id = m.method_id
+  JOIN site_region r ON si.region_id = r.region_id
+  LEFT JOIN site_img img ON si.site_id = img.site_id
+  WHERE (img.img_main = 1 OR img.img_main IS NULL)
   `;
   const params = [];
-    // 動態添加搜尋條件
-    if (keyword) {
-      sql += ` AND (si.site_name LIKE ? OR r.region_name LIKE ?)`;
-      params.push(`%${keyword}%`, `%${keyword}%`);
-    }
 
-    if (region_id) {
-      sql += ` AND si.region_id = ?`;
-      params.push(region_id);
-    }
+  // 動態添加搜尋條件
+  if (keyword) {
+    sql += ` AND (si.site_name LIKE ? OR r.region_name LIKE ?)`;
+    params.push(`%${keyword}%`, `%${keyword}%`);
+  }
 
-    if (method_id) {
-      sql += ` AND si.method_id = ?`;
-      params.push(method_id);
-    }
+  if (region_id && region_id !== 'all') {
+    sql += ` AND si.region_id = ?`;
+    params.push(region_id);
+  }
 
-    if (level_id) {
-      sql += ` AND si.level_id = ?`;
-      params.push(level_id);
-    }
+  if (method_id) {
+    sql += ` AND si.method_id = ?`;
+    params.push(method_id);
+  }
 
-    sql += ` ORDER BY si.site_id`;
+  if (level_id) {
+    sql += ` AND si.level_id = ?`;
+    params.push(level_id);
+  }
 
-    const [rows] = await db.query(sql, params);
-    res.json(rows);
-    }catch(error) {
-      res.status(500).json({ error: error.message });
-    }
+  sql += ` ORDER BY si.site_id`;
+
+  const [rows] = await db.query(sql, params);
+  res.json(rows);
+} catch(error) {
+  res.status(500).json({ error: error.message });
+}
 });
 export default router;
