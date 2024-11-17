@@ -128,37 +128,6 @@ router.get("/", async (req, res) => {
   }
 });
 
-// 取得單一產品資料
-router.get("/:round_id", async (req, res) => {
-  const { round_id } = req.params;
-  try {
-    // 查詢產品基本資料
-    const sql = `
-    SELECT lr.round_id, lr.lesson_id, lr.coach_id, lr.lesson_loc_id, lr.round_start, lr.round_end, lr.round_price, lr.round_quota, l.lesson_name, l.lesson_name_zh, l.lesson_intro, l.lesson_group, l.lesson_content, l.lesson_process, l.lesson_contain, l.lesson_notice, l.lesson_img_a, l.lesson_img_b, l.lesson_img_c, l.lesson_img_d, l.lesson_img_e, c.coach_name, c.coach_img, c.coach_intro, c.coach_rate, c.coach_exp, lt.lesson_type, cd.cert_dept, ll.lesson_loc
-    FROM lesson_round lr
-    JOIN lesson l ON lr.lesson_id = l.lesson_id
-    JOIN coach c ON lr.coach_id = c.coach_id
-    JOIN lesson_loc ll ON lr.lesson_loc_id = ll.lesson_loc_id
-    JOIN lesson_type lt ON l.lesson_type_id = lt.lesson_type_id
-    JOIN cert_dept cd ON l.cert_dept_id = cd.cert_dept_id
-    WHERE round_id = ${round_id}`;
-    const [rows] = await db.query(sql, [round_id]);
-
-    // 如果日期為有效資料則利用moment改格式, 不然設成空字串
-    rows.forEach((el) => {
-      const s = moment(el.round_start);
-      el.round_start = s.isValid() ? s.format("YYYY/MM/DD") : "";
-      const e = moment(el.round_end);
-      el.round_end = e.isValid() ? e.format("YYYY/MM/DD") : "";
-    });
-
-    res.json(Object.assign({}, ...rows));
-  } catch (err) {
-    console.log(err);
-    res.status(500).json({ error: "Internal Server Error" });
-  }
-});
-
 // 讀取單筆資料
 // router.get("/:round_id", async (req, res) => {
 //   const output = {
@@ -210,9 +179,84 @@ router.get("/:round_id", async (req, res) => {
 //   res.json(output);
 // });
 
-// 預約
-router.post("/:round_id/booking/step1", async (req, res) => {
+// 讀取單筆資料
+router.get("/:round_id", async (req, res) => {
+  const { round_id } = req.params;
+  try {
+    // 查詢產品基本資料
+    const sql = `
+    SELECT lr.round_id, lr.lesson_id, lr.coach_id, lr.lesson_loc_id, lr.round_start, lr.round_end, lr.round_price, lr.round_quota, l.lesson_name, l.lesson_name_zh, l.lesson_intro, l.lesson_group, l.lesson_content, l.lesson_process, l.lesson_contain, l.lesson_notice, l.lesson_img_a, l.lesson_img_b, l.lesson_img_c, l.lesson_img_d, l.lesson_img_e, c.coach_name, c.coach_img, c.coach_intro, c.coach_rate, c.coach_exp, lt.lesson_type, cd.cert_dept, ll.lesson_loc
+    FROM lesson_round lr
+    JOIN lesson l ON lr.lesson_id = l.lesson_id
+    JOIN coach c ON lr.coach_id = c.coach_id
+    JOIN lesson_loc ll ON lr.lesson_loc_id = ll.lesson_loc_id
+    JOIN lesson_type lt ON l.lesson_type_id = lt.lesson_type_id
+    JOIN cert_dept cd ON l.cert_dept_id = cd.cert_dept_id
+    WHERE round_id = ${round_id}`;
+    const [rows] = await db.query(sql, [round_id]);
 
-})
+    // 如果日期為有效資料則利用moment改格式, 不然設成空字串
+    rows.forEach((el) => {
+      const s = moment(el.round_start);
+      el.round_start = s.isValid() ? s.format("YYYY/MM/DD") : "";
+      const e = moment(el.round_end);
+      el.round_end = e.isValid() ? e.format("YYYY/MM/DD") : "";
+    });
+
+    res.json(Object.assign({}, ...rows));
+  } catch (err) {
+    console.log(err);
+    res.status(500).json({ error: "Internal Server Error" });
+  }
+});
+
+// 新增課程預約訂單
+router.post("/:round_id/booking/step", async (req, res) => {
+  const { round_id, user_id, order_point, order_price } = req.body;
+
+  // 驗證必要欄位
+  if (!round_id || !user_id || !order_point || !order_price) {
+    return res.status(400).json({ message: "請提供完整的資料！" });
+  }
+
+  order_num = Date.now(); // 使用 Date.now() 生成 order_num
+
+  const sql = `
+    INSERT INTO lesson_order (round_id, user_id, order_num, order_point, order_price)
+    VALUES (?, ?, ?, ?, ?)
+  `;
+
+  try {
+    const [result] = await db.query(sql);
+    return res.json({ ...result, success: !!result.affectedRows });
+  } catch (ex) {
+    return res.json({ success: false, ex });
+  }
+  // pool.execute(
+  //   query,
+  //   [round_id, user_id, order_num, order_point, order_price],
+  //   (err, results) => {
+  //     if (err) {
+  //       console.error(err);
+  //       return res.status(500).json({ message: "新增訂單失敗" });
+  //     }
+  //     res.status(201).json({
+  //       message: "訂單新增成功",
+  //       orderId: results.insertId,
+  //     });
+  //   }
+  // );
+});
+
+// 修改付款(選擇付款方式)
+router.put("/:round_id/booking/step", async (req, res) => {
+  let { round_id, user_id, order_num, order_point, } = req.body;
+
+});
+
+// 讀取課程訂單(完成頁)
+router.get("/:round_id/booking/completed", async (req, res) => {
+  let { round_id, user_id, order_num, order_point, } = req.body;
+});
 
 export default router;
