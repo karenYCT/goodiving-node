@@ -31,7 +31,7 @@ CREATE TABLE `cart_list` (
   PRIMARY KEY (`cart_id`),
   KEY `user_id` (`user_id`),
   KEY `product_variant_id` (`product_variant_id`)
-) ENGINE=InnoDB AUTO_INCREMENT=230 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+) ENGINE=InnoDB AUTO_INCREMENT=246 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --
@@ -40,7 +40,6 @@ CREATE TABLE `cart_list` (
 
 LOCK TABLES `cart_list` WRITE;
 /*!40000 ALTER TABLE `cart_list` DISABLE KEYS */;
-INSERT INTO `cart_list` VALUES (56,1,43,2,'2024-11-14 17:13:49'),(227,208,4,2,'2024-11-16 16:23:41'),(228,208,43,1,'2024-11-17 15:54:22'),(229,208,45,1,'2024-11-17 15:54:27');
 /*!40000 ALTER TABLE `cart_list` ENABLE KEYS */;
 UNLOCK TABLES;
 /*!40103 SET TIME_ZONE=@OLD_TIME_ZONE */;
@@ -53,4 +52,4 @@ UNLOCK TABLES;
 /*!40101 SET COLLATION_CONNECTION=@OLD_COLLATION_CONNECTION */;
 /*!40111 SET SQL_NOTES=@OLD_SQL_NOTES */;
 
--- Dump completed on 2024-11-17 16:59:37
+-- Dump completed on 2024-11-18 15:57:04
