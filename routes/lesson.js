@@ -44,27 +44,27 @@ router.get("/", async (req, res) => {
 
   if (dept) {
     if (Array.isArray(dept)) {
-      sql += ` AND l.cert_dept_id IN (${dept.map(() => '?').join(', ')})`;
+      sql += ` AND l.cert_dept_id IN (${dept.map(() => "?").join(", ")})`;
       params.push(...dept);
     } else {
       sql += " AND l.cert_dept_id = ?";
       params.push(dept);
     }
   }
-  
+
   if (exp) {
     if (Array.isArray(exp)) {
-      sql += ` AND c.coach_exp IN (${exp.map(() => '?').join(', ')})`;
+      sql += ` AND c.coach_exp IN (${exp.map(() => "?").join(", ")})`;
       params.push(...exp);
     } else {
       sql += " AND c.coach_exp >= ?";
       params.push(exp);
     }
   }
-  
+
   if (gender) {
     if (Array.isArray(gender)) {
-      sql += ` AND c.coach_sex IN (${gender.map(() => '?').join(', ')})`;
+      sql += ` AND c.coach_sex IN (${gender.map(() => "?").join(", ")})`;
       params.push(...gender);
     } else {
       sql += " AND c.coach_sex = ?";
@@ -212,51 +212,99 @@ router.get("/:round_id", async (req, res) => {
 
 // 新增課程預約訂單
 router.post("/:round_id/booking/step", async (req, res) => {
-  const { round_id, user_id, order_point, order_price } = req.body;
-
-  // 驗證必要欄位
-  if (!round_id || !user_id || !order_point || !order_price) {
-    return res.status(400).json({ message: "請提供完整的資料！" });
-  }
-
-  order_num = Date.now(); // 使用 Date.now() 生成 order_num
-
-  const sql = `
-    INSERT INTO lesson_order (round_id, user_id, order_num, order_point, order_price)
-    VALUES (?, ?, ?, ?, ?)
-  `;
-
   try {
-    const [result] = await db.query(sql);
-    return res.json({ ...result, success: !!result.affectedRows });
-  } catch (ex) {
-    return res.json({ success: false, ex });
+    const { round_id, user_id, order_point, order_price } = req.body;
+
+    // 驗證必要欄位
+    if (!round_id || !user_id || !order_point || !order_price) {
+      return res.status(400).json({
+        success: false,
+        message: "Missing required fields",
+        received: req.body,
+      });
+    }
+
+    // 檢查數值是否合法
+    if (isNaN(order_point) || isNaN(order_price)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid order_point or order_price value",
+      });
+    }
+
+    // const order_num = Date.now(); // 使用 Date.now() 生成 order_num
+    const order_num = new Date().getTime(); // 使用 Date.now() 生成 order_num
+    // console.log("order_num:", Date.now());
+
+    const sql = `
+      INSERT INTO lesson_order SET ?`;
+
+    const data = {
+      round_id,
+      user_id,
+      order_num,
+      order_point,
+      order_price,
+    };
+    // console.log("data:", data);
+
+    const [result] = await db.query(sql, [data]);
+
+    if (result.affectedRows > 0) {
+      return res.status(201).json({
+        success: true,
+        message: "Order created successfully",
+        orderId: result.insertId,
+        order_num: order_num,
+      });
+    } else {
+      throw new Error("Failed to insert order");
+    }
+  } catch (error) {
+    console.error("Order creation error:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Internal server error",
+      error: error.message,
+    });
   }
-  // pool.execute(
-  //   query,
-  //   [round_id, user_id, order_num, order_point, order_price],
-  //   (err, results) => {
-  //     if (err) {
-  //       console.error(err);
-  //       return res.status(500).json({ message: "新增訂單失敗" });
-  //     }
-  //     res.status(201).json({
-  //       message: "訂單新增成功",
-  //       orderId: results.insertId,
-  //     });
-  //   }
-  // );
 });
+
+// router.post("/:round_id/booking/step", async (req, res) => {
+//   const { round_id, user_id, order_point, order_price } = req.body;
+
+//   // 驗證必要欄位
+//   console.log("看一下", req.body);
+
+//   if (!round_id || !user_id || !order_point || !order_price) {
+
+//     return res.status(400).json({ message: req.body });
+//   }
+
+//   const order_num = Date.now(); // 使用 Date.now() 生成 order_num
+
+//   const sql = `
+//     INSERT INTO lesson_order (round_id, user_id, order_num, order_point, order_price)
+//     VALUES (?, ?, ?, ?, ?)
+//   `;
+
+//   try {
+//     const [result] = await db.query(sql);
+//     return res.json({ ...result, success: !!result.affectedRows });
+//   } catch (ex) {
+//     return res.json({ success: false, ex });
+//   }
+
+// });
 
 // 修改付款(選擇付款方式)
 router.put("/:round_id/booking/step", async (req, res) => {
-  let { round_id, user_id, order_num, order_point, } = req.body;
-
+  let { round_id, user_id, order_num, order_point } = req.body;
 });
 
 // 讀取課程訂單(完成頁)
 router.get("/:round_id/booking/completed", async (req, res) => {
-  let { round_id, user_id, order_num, order_point, } = req.body;
+  let { round_id, user_id, order_num, order_point } = req.body;
 });
 
 export default router;
