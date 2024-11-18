@@ -865,13 +865,15 @@ router.put("/update/:log_id", async (req, res) => {
         max_depth ?? null,
         bottom_time ?? null,
         water_temp ?? null,
-        visi_id || null, 
+        visi_id === '' ? null : visi_id, 
         method_id || null,
         log_exp ?? null,
         is_privacy ? 1 : 0,
         logId
       ]
     );
+    console.log('Received update data:', req.body);
+    console.log('Processed visi_id:', visi_id === '' ? null : visi_id);
 
     // 2.更新圖片
     if (images && Array.isArray(images)) {
