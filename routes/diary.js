@@ -6,12 +6,13 @@ import path from 'path';
 
 
 const router = express.Router();
-
+router.use(authMiddleware); 
 //獲取草稿列表
 router.get("/drafts", async (req, res) => {
   try {
     const { region_id } = req.query;
     console.log('收到的區域篩選:', region_id);
+    const user_id = req.auth?.user_id;
 
     let sql = `
       SELECT 
@@ -50,9 +51,9 @@ router.get("/drafts", async (req, res) => {
       LEFT JOIN visibility v ON l.visi_id = v.visi_id
       LEFT JOIN user u ON l.user_id = u.user_id
       LEFT JOIN log_img li ON l.log_id = li.log_id
-      WHERE l.is_draft = 1
+      WHERE l.is_draft = 1  AND l.user_id = ?
     `;
-    const params = [];
+    const params = [user_id];
 
     if (region_id && region_id !== "all") {
       sql += " AND s.region_id = ?";
@@ -83,74 +84,7 @@ router.get("/drafts", async (req, res) => {
   }
 });
 
-// router.get("/drafts", async (req, res) => {
-//   try {
-//     const { region_id } = req.query;
-//     console.log('收到的區域篩選:', region_id);
-
-//     let sql = `
-//       SELECT 
-//         l.log_id,
-//         l.site_id, 
-//         l.date,
-//         l.max_depth,
-//         l.bottom_time,
-//         l.water_temp,
-//         l.visi_id,
-//         l.log_exp,
-//         l.is_privacy,
-//         l.is_draft,
-//         l.created_at,
-//         s.site_name,
-//         s.region_id,
-//         sr.region_name,
-//         m.method_name,
-//         m.method_id,
-//         v.visi_name AS visibility,
-//         u.user_full_name
-//       FROM log l
-//       LEFT JOIN site_info s ON l.site_id = s.site_id
-//       LEFT JOIN site_region sr ON s.region_id = sr.region_id
-//       LEFT JOIN method m ON l.method_id = m.method_id
-//       LEFT JOIN visibility v ON l.visi_id = v.visi_id
-//       LEFT JOIN user u ON l.user_id = u.user_id
-//       WHERE l.is_draft = 1
-//     `;
-//     const params = [];
-
-//     if (region_id && region_id !== "all") {
-//       sql += " AND s.region_id = ?";
-//       params.push(region_id);
-//       console.log('過濾後的地區:', region_id);
-//     }
-
-//     sql += `ORDER BY l.created_at DESC`;
-//     console.log('獲取草稿列表的SQL:', sql, '參數:', params);
-
-//     const [drafts] = await db.query(sql, params);
-//     console.log('獲取草稿列表的結果:', drafts);
-
-//     const draftsWithImages = await Promise.all(
-//       drafts.map(async (draft) => {
-//         const [images] = await db.query(
-//           `SELECT img_id, img_url, is_main 
-//           FROM log_img 
-//           WHERE log_id = ?`,
-//           [draft.log_id]
-//         );
-//         return { ...draft, images };
-//       })
-//     );
-
-//     res.json(draftsWithImages);
-//   } catch (error) {
-//     console.error('獲取草稿列表失敗:', error);
-//     res.status(500).json({ error: error.message });
-//   }
-// });
-
 //儲存新草稿
-
 router.post("/draft" , async (req, res) => {
   const output = {
     success: false,
@@ -338,9 +272,18 @@ router.get("/img/:filename" , (req, res) => {
 
 //獲取所有日誌（包含區域篩選）
 router.get("/logs", async (req, res) => {
+  console.log('收到請求參數:', req.query);
+  console.log('user_id:', req.auth?.user_id);
+  console.log('region_id:', req.query.region_id);
   try {
     const { region_id } = req.query;
     console.log('收到的區域篩選:', region_id);
+    const user_id = req.auth?.user_id; // 從 auth middleware 取得用戶 ID
+    console.log('GET /logs - 參數:', {
+      user_id,
+      region_id,
+      auth: req.auth  // 檢查完整的 auth 物件
+    });
 
     let sql = `
       SELECT 
@@ -378,18 +321,22 @@ router.get("/logs", async (req, res) => {
       LEFT JOIN visibility v ON l.visi_id = v.visi_id
       LEFT JOIN user u ON l.user_id = u.user_id
       LEFT JOIN log_img li ON l.log_id = li.log_id
-      WHERE l.is_draft = 0
+      WHERE l.is_draft = 0  AND l.user_id = ? 
     `;
-    const params = [];
+    const params = [user_id];
 
     if (region_id && region_id !== "all") {
       sql += " AND s.region_id = ?";
       params.push(region_id);
     }
 
+    console.log('執行的 SQL:', sql);
+    console.log('SQL 參數:', params);
+
     sql += ` GROUP BY l.log_id ORDER BY l.created_at DESC`;
 
     const [logs] = await db.query(sql, params);
+    console.log('查詢結果數量:', logs.length);
     
     // 處理圖片資料
     const processedLogs = logs.map(log => ({
@@ -411,76 +358,8 @@ router.get("/logs", async (req, res) => {
   }
 });
 
-// router.get("/logs", async (req, res) => {
-//   try {
-//     const { region_id } = req.query;
-//     console.log('收到的區域篩選:', region_id);
-
-//     let sql = `
-//       SELECT 
-//         l.log_id,
-//         l.site_id, 
-//         l.date,
-//         l.max_depth,
-//         l.bottom_time,
-//         l.water_temp,
-//         l.visi_id,
-//         l.log_exp,
-//         l.is_privacy,
-//         l.created_at,
-//         s.site_name,
-//         s.region_id,
-//         sr.region_name,
-//         m.method_name,
-//         m.method_id,
-//         v.visi_name AS visibility,
-//         u.user_full_name
-//       FROM log l
-//       LEFT JOIN site_info s ON l.site_id = s.site_id
-//       LEFT JOIN site_region sr ON s.region_id = sr.region_id
-//       LEFT JOIN method m ON l.method_id = m.method_id
-//       LEFT JOIN visibility v ON l.visi_id = v.visi_id
-//       LEFT JOIN user u ON l.user_id = u.user_id
-//       WHERE l.is_draft = 0
-//     `;
-//     const params = [];
-
-//     //加入區域過路條件
-//     if (region_id && region_id !== "all") {
-//       sql += " AND s.region_id = ?";
-//       params.push(region_id);
-//       console.log('過濾後的地區:', region_id); 
-//     }
-
-//     sql += `ORDER BY l.created_at DESC`;
-//     console.log('獲取日誌列表的SQL:', sql, '參數:', params);
-
-//     //執行主查詢
-//     const [logs] = await db.query(sql, params);
-//     console.log('獲取日誌列表的結果:', logs);
-
-//     // 獲取每個日誌的圖片
-//     const logsWithImages = await Promise.all(
-//       logs.map(async (log) => {
-//         const [images] = await db.query(
-//           `SELECT img_id, img_url, is_main 
-//           FROM log_img 
-//           WHERE log_id = ?`,
-//           [log.log_id]
-//         );
-//         return { ...log, images };
-//       })
-//     );
-
-//     res.json(logsWithImages);
-//   } catch (error) {
-//     console.error('獲取日誌列表失敗:', error);
-//     res.status(500).json({ error: error.message });
-//   }
-// });
 
 //新增潛水日誌 
-
 router.post("/add" , async (req, res) => {
   const output = {
     success: false,
@@ -605,6 +484,7 @@ router.post("/add" , async (req, res) => {
 //讀取單一日誌的內容
 router.get("/:diary_id", async (req, res) => {
   try {
+    const user_id = req.auth?.user_id;
     const { diary_id } = req.params;
 
     const sql = `
@@ -643,11 +523,11 @@ router.get("/:diary_id", async (req, res) => {
       LEFT JOIN visibility v ON l.visi_id = v.visi_id
       LEFT JOIN user u ON l.user_id = u.user_id
       LEFT JOIN log_img li ON l.log_id = li.log_id
-      WHERE l.log_id = ?
+      WHERE l.log_id = ? AND l.user_id = ?
       GROUP BY l.log_id
     `;
 
-    const [rows] = await db.query(sql, [diary_id]);
+    const [rows] = await db.query(sql, [diary_id, user_id]);
     
     if (rows.length > 0) {
       const processedLog = {
@@ -669,69 +549,6 @@ router.get("/:diary_id", async (req, res) => {
     });
   }
 });
-
-// router.get("/:diary_id", async (req, res) => {
-//   try {
-//     const { diary_id } = req.params;
-
-//     const sql = `
-//       SELECT 
-//         l.log_id,
-//         l.date,
-//         l.max_depth,
-//         l.bottom_time,
-//         l.water_temp,
-//         l.visi_id,
-//         l.method_id,
-//         l.log_exp,
-//         l.is_privacy,
-//         l.is_draft,
-//         l.created_at,
-//         s.site_name,
-//         sr.region_name,
-//         m.method_id,
-//         m.method_name,
-//         v.visi_name AS visibility,
-//         u.user_full_name
-//       FROM log l
-//       LEFT JOIN site_info s ON l.site_id = s.site_id
-//       LEFT JOIN site_region sr ON s.region_id = sr.region_id
-//       LEFT JOIN method m ON l.method_id = m.method_id
-//       LEFT JOIN visibility v ON l.visi_id = v.visi_id
-//       LEFT JOIN user u ON l.user_id = u.user_id
-//       WHERE l.log_id = ?
-//     `;
-
-//     const [rows] = await db.query(sql, [diary_id]);
-//     res.json(rows[0]);
-//   } catch (error) {
-//     console.error('查詢出錯:', error);
-//     res.status(500).json({ 
-//       error: error.message,
-//       details: '讀取日誌時發生錯誤'
-//     });
-//   }
-// });
-
-
-
-//======================================
-//讀取單一日誌的照片
-// router.get("/images/:diary_id" , async (req, res) => {
-//   const sql = `SELECT 
-//         img_id,
-//         img_url,
-//         is_main
-//     FROM log_img
-//     WHERE log_id = ?
-//     ORDER BY is_main DESC;`;
-//   try {
-//     const [rows] = await db.query(sql, [req.params.diary_id]);
-//     res.json(rows);
-//   } catch (error) {
-//     res.status(500).json({ error: error.message });
-//   }
-// });
 
 // 刪除單筆日誌
 router.delete("/:log_id", async (req, res) => {
@@ -947,7 +764,6 @@ router.put("/update/:log_id", async (req, res) => {
   }
 });
 
-
 // 刪除草稿
 router.delete("/draft/:id", async (req, res) => {
   const output = {
@@ -1128,7 +944,6 @@ router.put("/draft/:id", async (req, res) => {
     });
   }
 });
-
 
 //草稿發佈成正式日誌
 router.put('/draft/:id/publish', async (req, res) => {
