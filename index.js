@@ -21,9 +21,10 @@ const app = express();
 const server = http.createServer(app);
 const io = new Server(server, {
   cors: {
-    origin: "http://localhost:3000",
+    origin: ["http://localhost:3000", "http://192.168.37.187:3000"],
     methods: ["GET", "POST"],
   },
+  transports: ["websocket", "polling"],
 });
 
 // 取得檔案URL
