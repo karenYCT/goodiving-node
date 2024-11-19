@@ -2,16 +2,58 @@ import express from "express";
 import db from "../utils/connect-mysql.js";
 import upload from "../utils/upload.js";
 import authMiddleware from "../middlewares/authMiddleware.js";
-import path from 'path';
-
+import path from "path";
 
 const router = express.Router();
-router.use(authMiddleware); 
+
+//公共路由不需要驗證
+
+// 取得特定區域的潛點（diaryForm潛點區域和潛點名稱）
+router.get("/sites/:region_id", async (req, res) => {
+  try {
+    const { region_id } = req.params;
+
+    const [sites] = await db.query(
+      `
+      SELECT site_id, site_name 
+      FROM site_info 
+      WHERE region_id = ?
+      ORDER BY site_name
+    `,
+      [region_id]
+    );
+
+    res.json(sites);
+  } catch (error) {
+    console.error("Error fetching sites:", error);
+    res.status(500).json({ error: "Failed to fetch sites" });
+  }
+});
+
+// 取得潛水方式
+router.get("/methods", async (req, res) => {
+  try {
+    const [methods] = await db.query(`
+      SELECT method_id, method_name 
+      FROM method 
+      ORDER BY method_name
+    `);
+
+    res.json(methods);
+  } catch (error) {
+    console.error("Error fetching diving methods:", error);
+    res.status(500).json({ error: "Failed to fetch diving methods" });
+  }
+});
+
+//以下是需要驗證的路由
+router.use(authMiddleware);
+
 //獲取草稿列表
 router.get("/drafts", async (req, res) => {
   try {
     const { region_id } = req.query;
-    console.log('收到的區域篩選:', region_id);
+    console.log("收到的區域篩選:", region_id);
     const user_id = req.auth?.user_id;
 
     let sql = `
@@ -63,29 +105,27 @@ router.get("/drafts", async (req, res) => {
     sql += ` GROUP BY l.log_id ORDER BY l.created_at DESC`;
 
     const [drafts] = await db.query(sql, params);
-    
+
     // 處理圖片資料
-    const processedDrafts = drafts.map(draft => ({
+    const processedDrafts = drafts.map((draft) => ({
       ...draft,
-      images: draft.images_json 
-        ? JSON.parse(`[${draft.images_json}]`)
-        : []
+      images: draft.images_json ? JSON.parse(`[${draft.images_json}]`) : [],
     }));
 
     // 移除臨時欄位
-    processedDrafts.forEach(draft => {
+    processedDrafts.forEach((draft) => {
       delete draft.images_json;
     });
 
     res.json(processedDrafts);
   } catch (error) {
-    console.error('獲取草稿列表失敗:', error);
+    console.error("獲取草稿列表失敗:", error);
     res.status(500).json({ error: error.message });
   }
 });
 
 //儲存新草稿
-router.post("/draft" , async (req, res) => {
+router.post("/draft", async (req, res) => {
   const output = {
     success: false,
     errors: {},
@@ -189,70 +229,84 @@ router.post("/draft" , async (req, res) => {
   }
 });
 
+router.post("/upload", (req, res) => {
+  console.log("開始處理上傳請求");
+  console.log("驗證用戶:", req.auth?.user_id); // 添加用戶ID日誌
+  
+  // 使用 multer 處理檔案上傳
+  upload.array("images", 3)(req, res, (err) => {
+    // 處理上傳錯誤
+    if (err) {
+      console.error("上傳錯誤:", err);
+      return res.status(400).json({
+        success: false,
+        error: err.message || '上傳失敗',
+        details: err.code
+      });
+    }
 
-// 取得特定區域的潛點（diaryForm潛點區域和潛點名稱）
-router.get("/sites/:region_id", async (req, res) => {
-  try {
-    const { region_id } = req.params;
+    // 檢查是否有檔案
+    if (!req.files || !req.files.length) {
+      return res.status(400).json({
+        success: false,
+        message: "請選擇要上傳的檔案"
+      });
+    }
 
-    const [sites] = await db.query(
-      `
-      SELECT site_id, site_name 
-      FROM site_info 
-      WHERE region_id = ?
-      ORDER BY site_name
-    `,
-      [region_id]
-    );
+    try {
+      // 處理上傳的檔案
+      const files = req.files.map(file => {
+        // 驗證檔案資料
+        if (!file.filename || !file.originalname) {
+          throw new Error(`檔案資料無效: ${file.originalname || '未知檔案'}`);
+        }
 
-    res.json(sites);
-  } catch (error) {
-    console.error("Error fetching sites:", error);
-    res.status(500).json({ error: "Failed to fetch sites" });
-  }
-});
+        return {
+          filename: file.filename,
+          originalname: file.originalname,
+          path: file.filename,
+          size: file.size,
+          mimetype: file.mimetype
+        };
+      });
 
-// 取得潛水方式
-router.get("/methods", async (req, res) => {
-  try {
-    const [methods] = await db.query(`
-      SELECT method_id, method_name 
-      FROM method 
-      ORDER BY method_name
-    `);
+      // 驗證檔案類型
+      const validMimeTypes = ['image/jpeg', 'image/png', 'image/gif'];
+      const invalidFiles = files.filter(file => !validMimeTypes.includes(file.mimetype));
+      
+      if (invalidFiles.length) {
+        return res.status(415).json({
+          success: false,
+          error: "不支援的檔案格式",
+          details: `支援的格式: ${validMimeTypes.join(', ')}`
+        });
+      }
 
-    res.json(methods);
-  } catch (error) {
-    console.error("Error fetching diving methods:", error);
-    res.status(500).json({ error: "Failed to fetch diving methods" });
-  }
+      // 回傳成功結果
+      return res.json({
+        success: true,
+        files: files
+      });
+
+    } catch (error) {
+      console.error("處理檔案時發生錯誤:", error);
+      return res.status(500).json({
+        success: false,
+        error: "處理檔案失敗",
+        details: error.message
+      });
+    }
+  });
 });
 
 //上傳圖片（最多三張）
-router.post("/upload", upload.array("images", 3),async (req, res) => {
-  console.log("收到上傳請求");
-  console.log("檔案資訊:", req.files);
-  console.log("請求內容:", req.body);
-  try {
-    if (!req.files || req.files.length === 0) {
-      return res.status(400).json({ error: "沒有收到任何檔案" });
-    }
+router.use(express.json({ limit: "50mb" }));
+router.use(express.urlencoded({ limit: "50mb", extended: true }));
 
-    const files = req.files.map((file) => ({
-      filename: file.filename,
-      originalname: file.originalname,
-      path: `/img/${file.filename}`,
-      size: file.size,
-    }));
-    res.json(req.files);
-  } catch (error) {
-    console.log("檔案上傳錯誤", error);
-    res.status(500).json({ error: error.message });
-  }
-});
+
 
 //獲取已上傳的圖片
-router.get("/img/:filename" , (req, res) => {
+router.get("/img/:filename", (req, res) => {
   try {
     const { filename } = req.params;
     // 使用相對路徑
@@ -272,17 +326,17 @@ router.get("/img/:filename" , (req, res) => {
 
 //獲取所有日誌（包含區域篩選）
 router.get("/logs", async (req, res) => {
-  console.log('收到請求參數:', req.query);
-  console.log('user_id:', req.auth?.user_id);
-  console.log('region_id:', req.query.region_id);
+  console.log("收到請求參數:", req.query);
+  console.log("user_id:", req.auth?.user_id);
+  console.log("region_id:", req.query.region_id);
   try {
     const { region_id } = req.query;
-    console.log('收到的區域篩選:', region_id);
+    console.log("收到的區域篩選:", region_id);
     const user_id = req.auth?.user_id; // 從 auth middleware 取得用戶 ID
-    console.log('GET /logs - 參數:', {
+    console.log("GET /logs - 參數:", {
       user_id,
       region_id,
-      auth: req.auth  // 檢查完整的 auth 物件
+      auth: req.auth, // 檢查完整的 auth 物件
     });
 
     let sql = `
@@ -330,37 +384,34 @@ router.get("/logs", async (req, res) => {
       params.push(region_id);
     }
 
-    console.log('執行的 SQL:', sql);
-    console.log('SQL 參數:', params);
+    console.log("執行的 SQL:", sql);
+    console.log("SQL 參數:", params);
 
     sql += ` GROUP BY l.log_id ORDER BY l.created_at DESC`;
 
     const [logs] = await db.query(sql, params);
-    console.log('查詢結果數量:', logs.length);
-    
+    console.log("查詢結果數量:", logs.length);
+
     // 處理圖片資料
-    const processedLogs = logs.map(log => ({
+    const processedLogs = logs.map((log) => ({
       ...log,
-      images: log.images_json 
-        ? JSON.parse(`[${log.images_json}]`)
-        : []
+      images: log.images_json ? JSON.parse(`[${log.images_json}]`) : [],
     }));
 
     // 移除臨時欄位
-    processedLogs.forEach(log => {
+    processedLogs.forEach((log) => {
       delete log.images_json;
     });
 
     res.json(processedLogs);
   } catch (error) {
-    console.error('獲取日誌列表失敗:', error);
+    console.error("獲取日誌列表失敗:", error);
     res.status(500).json({ error: error.message });
   }
 });
 
-
-//新增潛水日誌 
-router.post("/add" , async (req, res) => {
+//新增潛水日誌
+router.post("/add", async (req, res) => {
   const output = {
     success: false,
     errors: {},
@@ -480,7 +531,6 @@ router.post("/add" , async (req, res) => {
   res.json(output);
 });
 
-
 //讀取單一日誌的內容
 router.get("/:diary_id", async (req, res) => {
   try {
@@ -528,29 +578,29 @@ router.get("/:diary_id", async (req, res) => {
     `;
 
     const [rows] = await db.query(sql, [diary_id, user_id]);
-    
+
     if (rows.length > 0) {
       const processedLog = {
         ...rows[0],
-        images: rows[0].images_json 
+        images: rows[0].images_json
           ? JSON.parse(`[${rows[0].images_json}]`)
-          : []
+          : [],
       };
       delete processedLog.images_json;
       res.json(processedLog);
     } else {
-      res.status(404).json({ error: '找不到日誌' });
+      res.status(404).json({ error: "找不到日誌" });
     }
   } catch (error) {
-    console.error('查詢出錯:', error);
-    res.status(500).json({ 
+    console.error("查詢出錯:", error);
+    res.status(500).json({
       error: error.message,
-      details: '讀取日誌時發生錯誤'
+      details: "讀取日誌時發生錯誤",
     });
   }
 });
 
-// 刪除單筆日誌
+//刪除單筆日誌
 router.delete("/:log_id", async (req, res) => {
   const output = {
     success: false,
@@ -563,26 +613,31 @@ router.delete("/:log_id", async (req, res) => {
     output.info = "日誌編號錯誤";
     return res.json(output);
   }
-  
-  try{
+
+  try {
     //1.先刪除圖片
-    const [imageResult] = await db.query(`DELETE FROM log_img WHERE log_id = ?`, [log_id]);
+    const [imageResult] = await db.query(
+      `DELETE FROM log_img WHERE log_id = ?`,
+      [log_id]
+    );
     //2.再刪除日誌
-    const [result] = await db.query(`DELETE FROM log WHERE log_id = ?`, [log_id]);
+    const [result] = await db.query(`DELETE FROM log WHERE log_id = ?`, [
+      log_id,
+    ]);
 
     output.success = !!result.affectedRows;
-    if (!output.success){
+    if (!output.success) {
       output.info = "刪除失敗";
     }
-  }catch(ex){
+  } catch (ex) {
     output.info = "刪除時發生錯誤";
     output.ex = ex;
-    console.error('刪除日誌時發生錯誤', ex);
+    console.error("刪除日誌時發生錯誤", ex);
   }
   return res.json(output);
 });
 
-// 批量刪除日誌（POST /diary/batch-delete）
+//批量刪除日誌（POST /diary/batch-delete）
 router.post("/batch-delete", async (req, res) => {
   const output = {
     success: false,
@@ -596,26 +651,31 @@ router.post("/batch-delete", async (req, res) => {
     return res.json(output);
   }
   //確保所有id都是數字
-  const validLogIds = logIds.map(id => parseInt(id)).filter(id => id > 0);
+  const validLogIds = logIds.map((id) => parseInt(id)).filter((id) => id > 0);
   if (validLogIds.length === 0) {
     output.info = "請提供有效的日誌編號";
     return res.json(output);
   }
   try {
     //1.先刪除圖片
-    const [imageResult] = await db.query(`DELETE FROM log_img WHERE log_id IN (?)`, [validLogIds]);
+    const [imageResult] = await db.query(
+      `DELETE FROM log_img WHERE log_id IN (?)`,
+      [validLogIds]
+    );
     //2.再刪除日誌
-    const [result] = await db.query(`DELETE FROM log WHERE log_id IN (?)`, [validLogIds]);
+    const [result] = await db.query(`DELETE FROM log WHERE log_id IN (?)`, [
+      validLogIds,
+    ]);
     output.success = !!result.affectedRows;
-    if (!output.success){
+    if (!output.success) {
       output.info = "刪除失敗";
-    }else{
-      output.info = '`成功刪除 ${result.affectedRows} 筆日誌`';
+    } else {
+      output.info = "`成功刪除 ${result.affectedRows} 筆日誌`";
     }
   } catch (ex) {
     output.info = "刪除時發生錯誤";
     output.ex = ex;
-    console.error('批量刪除日誌時發生錯誤', ex);
+    console.error("批量刪除日誌時發生錯誤", ex);
   }
   return res.json(output);
 });
@@ -624,32 +684,33 @@ router.post("/batch-delete", async (req, res) => {
 router.put("/update/:log_id", async (req, res) => {
   try {
     const logId = req.params.log_id;
+    const user_id = req.auth?.user_id;
 
     // 1. 先檢查日誌是否存在
     const [existingLog] = await db.query(
-    `SELECT l.*, m.method_name, m.method_id
+      `SELECT l.*, m.method_name, m.method_id
     FROM log l
     LEFT JOIN method m ON l.method_id = m.method_id
-    WHERE l.log_id = ?`,
-    [logId]
+    WHERE l.log_id = ? AND l.user_id = ?`,
+      [logId, user_id]
     );
 
     if (!existingLog || existingLog.length === 0) {
       return res.status(404).json({
         success: false,
         error: {
-          message: '找不到要更新的日誌'
-        }
+          message: "找不到要更新的日誌",
+        },
       });
     }
 
-    const currentLog = existingLog[0];  
+    const currentLog = existingLog[0];
 
     // 2. 從請求中獲取資料，使用現有資料作為預設值
     const {
       date = currentLog.date,
       site_id = currentLog.site_id,
-      user_id = currentLog.user_id,
+      // user_id = currentLog.user_id,
       max_depth = currentLog.max_depth,
       bottom_time = currentLog.bottom_time,
       water_temp = currentLog.water_temp,
@@ -665,7 +726,6 @@ router.put("/update/:log_id", async (req, res) => {
       `UPDATE log SET 
         date = ?,
         site_id = ?,
-        user_id = ?,
         max_depth = ?,
         bottom_time = ?,
         water_temp = ?,
@@ -674,52 +734,55 @@ router.put("/update/:log_id", async (req, res) => {
         log_exp = ?,
         is_privacy = ?,
         updated_at = NOW()
-      WHERE log_id = ?`,
+      WHERE log_id = ? AND user_id = ? `,
       [
         date,
         site_id,
-        user_id,
         max_depth ?? null,
         bottom_time ?? null,
         water_temp ?? null,
-        visi_id === '' ? null : visi_id, 
+        visi_id === "" ? null : visi_id,
         method_id || null,
         log_exp ?? null,
         is_privacy ? 1 : 0,
-        logId
+        logId,
+        user_id,
       ]
     );
-    console.log('Received update data:', req.body);
-    console.log('Processed visi_id:', visi_id === '' ? null : visi_id);
+    console.log("Received update data:", req.body);
+    console.log("Processed visi_id:", visi_id === "" ? null : visi_id);
 
     // 2.更新圖片
     if (images && Array.isArray(images)) {
       // 先刪除現有的圖片
       await db.query(
-        'DELETE FROM log_img WHERE log_id = ?',
-        [logId]
+        "DELETE FROM log_img WHERE log_id = ? AND log_id IN (SELECT log_id FROM log WHERE user_id = ?)",
+        [logId, user_id]
       );
 
       // 過濾掉無效的圖片資料
-      const validImages = images.filter(img => img.img_url && img.img_url !== '/img/undefined');
-      
+      const validImages = images.filter(
+        (img) => img.img_url && img.img_url !== "/img/undefined"
+      );
+
       // 如果有新圖片，則插入
       if (images.length > 0) {
-        const imageValues = validImages.map(img => [
+        const imageValues = validImages.map((img) => [
           logId,
           img.img_url,
-          img.is_main
+          img.is_main,
         ]);
 
         await db.query(
-          'INSERT INTO log_img (log_id, img_url, is_main) VALUES ?',
+          "INSERT INTO log_img (log_id, img_url, is_main) VALUES ?",
           [imageValues]
         );
       }
     }
 
     // 3. 獲取更新後的完整日誌資料
-    const [updatedLog] = await db.query(`
+    const [updatedLog] = await db.query(
+      `
       SELECT 
         l.*,  
         s.site_name,
@@ -732,51 +795,55 @@ router.put("/update/:log_id", async (req, res) => {
       LEFT JOIN site_region sr ON s.region_id = sr.region_id
       LEFT JOIN method m ON l.method_id = m.method_id
       LEFT JOIN visibility v ON l.visi_id = v.visi_id
-      WHERE l.log_id = ?
-    `, [logId]);
-    
+      WHERE l.log_id = ? AND l.user_id = ?
+    `,
+      [logId, user_id]
+    );
+
     // 4. 獲取更新後的圖片資料
-    const [updatedImages] = await db.query(`
+    const [updatedImages] = await db.query(
+      `
       SELECT img_id, img_url, is_main
       FROM log_img
       WHERE log_id = ?
       ORDER BY is_main DESC
-    `, [logId]);
+    `,
+      [logId]
+    );
 
     // 5. 回傳更新成功的響應
     res.json({
       success: true,
       data: {
         ...updatedLog[0],
-        images: updatedImages
-      }
+        images: updatedImages,
+      },
     });
-
   } catch (error) {
-    console.error('更新日誌時發生錯誤:', error);
-    res.status(500).json({ 
-      success: false, 
-      error: { 
-        message: '更新日誌時發生錯誤',
-        details: error.message 
-      }
+    console.error("更新日誌時發生錯誤:", error);
+    res.status(500).json({
+      success: false,
+      error: {
+        message: "更新日誌時發生錯誤",
+        details: error.message,
+      },
     });
   }
 });
 
-// 刪除草稿
+//刪除草稿
 router.delete("/draft/:id", async (req, res) => {
   const output = {
     success: false,
     info: "",
   };
-    
-  try{
+
+  try {
     const log_id = parseInt(req.params.id);
 
     // 確認是否為草稿
     const [draft] = await db.query(
-      'SELECT log_id FROM log WHERE log_id = ? AND is_draft = 1',
+      "SELECT log_id FROM log WHERE log_id = ? AND is_draft = 1",
       [log_id]
     );
 
@@ -785,20 +852,20 @@ router.delete("/draft/:id", async (req, res) => {
       return res.status(404).json(output);
     }
 
-    await db.query('DELETE FROM log_img WHERE log_id = ?', [log_id]);
+    await db.query("DELETE FROM log_img WHERE log_id = ?", [log_id]);
     const [result] = await db.query(
-      'DELETE FROM log WHERE log_id = ? AND is_draft = 1',
+      "DELETE FROM log WHERE log_id = ? AND is_draft = 1",
       [log_id]
     );
 
     output.success = !!result.affectedRows;
-    if (!output.success){
+    if (!output.success) {
       output.info = "刪除失敗";
     }
-  }catch(ex){
+  } catch (ex) {
     output.info = "刪除時發生錯誤";
     output.ex = ex;
-    console.error('刪除日誌時發生錯誤', ex);
+    console.error("刪除日誌時發生錯誤", ex);
   }
   return res.json(output);
 });
@@ -810,23 +877,23 @@ router.put("/draft/:id", async (req, res) => {
 
     // 1. 先檢查日誌是否存在
     const [existingLog] = await db.query(
-    `SELECT l.*, m.method_name, m.method_id
+      `SELECT l.*, m.method_name, m.method_id
     FROM log l
     LEFT JOIN method m ON l.method_id = m.method_id
     WHERE l.log_id = ?`,
-    [logId]
+      [logId]
     );
 
     if (!existingLog || existingLog.length === 0) {
       return res.status(404).json({
         success: false,
         error: {
-          message: '找不到要更新的草稿'
-        }
+          message: "找不到要更新的草稿",
+        },
       });
     }
 
-    const currentLog = existingLog[0];  
+    const currentLog = existingLog[0];
 
     // 2. 從請求中獲取資料，使用現有資料作為預設值
     const {
@@ -865,42 +932,42 @@ router.put("/draft/:id", async (req, res) => {
         max_depth ?? null,
         bottom_time ?? null,
         water_temp ?? null,
-        visi_id || null, 
+        visi_id || null,
         method_id || null,
         log_exp ?? null,
         is_privacy ? 1 : 0,
-        logId
+        logId,
       ]
     );
 
     // 2.更新圖片
     if (images && Array.isArray(images)) {
       // 先刪除現有的圖片
-      await db.query(
-        'DELETE FROM log_img WHERE log_id = ?',
-        [logId]
-      );
+      await db.query("DELETE FROM log_img WHERE log_id = ?", [logId]);
 
       // 過濾掉無效的圖片資料
-      const validImages = images.filter(img => img.img_url && img.img_url !== '/img/undefined');
-      
+      const validImages = images.filter(
+        (img) => img.img_url && img.img_url !== "/img/undefined"
+      );
+
       // 如果有新圖片，則插入
       if (images.length > 0) {
-        const imageValues = validImages.map(img => [
+        const imageValues = validImages.map((img) => [
           logId,
           img.img_url,
-          img.is_main
+          img.is_main,
         ]);
 
         await db.query(
-          'INSERT INTO log_img (log_id, img_url, is_main) VALUES ?',
+          "INSERT INTO log_img (log_id, img_url, is_main) VALUES ?",
           [imageValues]
         );
       }
     }
 
     // 3. 獲取更新後的完整日誌資料
-    const [updatedLog] = await db.query(`
+    const [updatedLog] = await db.query(
+      `
       SELECT 
         l.*,  
         s.site_name,
@@ -914,69 +981,72 @@ router.put("/draft/:id", async (req, res) => {
       LEFT JOIN method m ON l.method_id = m.method_id
       LEFT JOIN visibility v ON l.visi_id = v.visi_id
       WHERE l.log_id = ?  AND l.is_draft = 1
-    `, [logId]);
-    
+    `,
+      [logId]
+    );
+
     // 4. 獲取更新後的圖片資料
-    const [updatedImages] = await db.query(`
+    const [updatedImages] = await db.query(
+      `
       SELECT img_id, img_url, is_main
       FROM log_img
       WHERE log_id = ?
       ORDER BY is_main DESC
-    `, [logId]);
+    `,
+      [logId]
+    );
 
     // 5. 回傳更新成功的響應
     res.json({
       success: true,
       data: {
         ...updatedLog[0],
-        images: updatedImages
-      }
+        images: updatedImages,
+      },
     });
-
   } catch (error) {
-    console.error('更新日誌時發生錯誤:', error);
-    res.status(500).json({ 
-      success: false, 
-      error: { 
-        message: '更新日誌時發生錯誤',
-        details: error.message 
-      }
+    console.error("更新日誌時發生錯誤:", error);
+    res.status(500).json({
+      success: false,
+      error: {
+        message: "更新日誌時發生錯誤",
+        details: error.message,
+      },
     });
   }
 });
 
 //草稿發佈成正式日誌
-router.put('/draft/:id/publish', async (req, res) => {
+router.put("/draft/:id/publish", async (req, res) => {
   try {
     const draftId = req.params.id;
 
-    const [draft] =await db.query(
-      'SELECT * FROM log WHERE log_id = ? AND is_draft = 1',
+    const [draft] = await db.query(
+      "SELECT * FROM log WHERE log_id = ? AND is_draft = 1",
       [draftId]
     );
-    if(!draft.length){
-      return res.status(404).json({ message: '找不到草稿日誌' });
+    if (!draft.length) {
+      return res.status(404).json({ message: "找不到草稿日誌" });
     }
 
     const [result] = await db.query(
-      'UPDATE log SET is_draft = 0, updated_at = NOW() WHERE log_id = ?',
+      "UPDATE log SET is_draft = 0, updated_at = NOW() WHERE log_id = ?",
       [draftId]
     );
 
     res.json({
       success: true,
-      message: '日誌發佈成功',
+      message: "日誌發佈成功",
     });
-
   } catch (error) {
-    console.error('發佈日誌時發生錯誤:', error);
-    res.status(500).json({ 
-      success: false, 
-      error: { 
-        message: '發佈日誌時發生錯誤',
-        details: error.message 
-      }
+    console.error("發佈日誌時發生錯誤:", error);
+    res.status(500).json({
+      success: false,
+      error: {
+        message: "發佈日誌時發生錯誤",
+        details: error.message,
+      },
     });
   }
-})
+});
 export default router;
