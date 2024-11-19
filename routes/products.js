@@ -74,4 +74,91 @@ router.get("/:id", async (req, res) => {
   }
 });
 
+// 詳細頁推薦商品
+router.get("/recommend/:product_id", async (req, res) => {
+  const { product_id } = req.params;
+
+  try {
+    // 1. 查找該 product_id 的所有 variant
+    const [variants] = await db.query(
+      "SELECT product_variant_id FROM product_variants WHERE product_id = ?",
+      [product_id]
+    );
+
+    if (variants.length === 0) {
+      return res.status(404).json({ error: "Product not found" });
+    }
+
+    const variantIds = variants.map((v) => v.product_variant_id);
+
+    // 2. 查詢所有包含這些 variant 的 order_id
+    const [orderItems] = await db.query(
+      "SELECT order_id FROM order_items WHERE product_variant_id IN (?)",
+      [variantIds]
+    );
+
+    if (orderItems.length === 0) {
+      return res.status(404).json({ error: "No related orders found" });
+    }
+
+    const orderIds = orderItems.map((item) => item.order_id);
+
+    // 3. 查詢同一訂單中的其他商品，計算相似度
+    const [relatedItems] = await db.query(
+      `SELECT product_variant_id FROM order_items 
+       WHERE order_id IN (?) AND product_variant_id NOT IN (?)`,
+      [orderIds, variantIds]
+    );
+
+    if (relatedItems.length === 0) {
+      return res.status(404).json({ error: "No related products found" });
+    }
+
+    const relatedVariantIds = relatedItems.map(
+      (item) => item.product_variant_id
+    );
+
+    // 4. 統計出現次數（作為簡單相似度評估）
+    const productFrequency = {};
+    relatedVariantIds.forEach((variant_id) => {
+      if (!productFrequency[variant_id]) {
+        productFrequency[variant_id] = 0;
+      }
+      productFrequency[variant_id] += 1;
+    });
+
+    // 5. 取出前4個最相關的 product_variant_id
+    const sortedVariantIds = Object.keys(productFrequency)
+      .sort((a, b) => productFrequency[b] - productFrequency[a])
+      .slice(0, 4);
+
+    if (sortedVariantIds.length === 0) {
+      return res.status(404).json({ error: "No similar products found" });
+    }
+
+    // 6. 查詢推薦商品的詳細資訊並添加出現次數
+    const [recommendedProducts] = await db.query(
+      `SELECT pl.product_id id, pl.title, pl.price, pl.img_url image, pv.product_variant_id 
+       FROM product_variants pv
+       JOIN product_list pl ON pv.product_id = pl.product_id
+       WHERE pv.product_variant_id IN (?)`,
+      [sortedVariantIds]
+    );
+
+    // 7. 在推薦結果中添加出現次數並排序
+    const resultWithFrequency = recommendedProducts
+      .map((product) => ({
+        ...product,
+        occurrence: productFrequency[product.product_variant_id] || 0,
+      }))
+      .sort((a, b) => b.occurrence - a.occurrence); // 根據 occurrence 降序排序
+
+    // 8. 返回推薦結果
+    return res.json(resultWithFrequency);
+  } catch (error) {
+    console.error("Error fetching recommendations:", error);
+    return res.status(500).json({ error: "Internal Server Error" });
+  }
+});
+
 export default router;
