@@ -22,6 +22,11 @@ app.get('/', async function (req, res) {
   }
 });
 
+// 2XX 幾乎都是成功
+// 3XX 幾乎導頁面
+// 4XX 沒有權限、帶錯參數
+// 5XX 一定都 server 後端問題
+
 // /api/comment/blog/:blogId
 app.get('/blog/:blogId', async (req, res) => {
   const { blogId } = req.params;  // 從路徑參數中獲取 blogId
