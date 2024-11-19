@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "nodemon --env-file=dev.env index.js",
-    "prod": "node --env-file=production.env index.js",
+    "prod": "node --env-file=dev.env index.js",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "keywords": [],
@@ -20,6 +20,7 @@
     "bcrypt": "^5.1.1",
     "bootstrap": "^5.3.3",
     "cors": "^2.8.5",
+    "crypto": "^1.0.1",
     "ejs": "^3.1.10",
     "express": "^4.21.1",
     "express-session": "^1.18.0",

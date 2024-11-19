@@ -15,15 +15,17 @@ import path from "path";
 import { fileURLToPath } from "url";
 import http from "http";
 import { Server } from "socket.io";
-
+import chat from "./routes/chat.js";
+import ecpayTestOnly from "./routes/ecpay-test-only.js";
 
 const app = express();
 const server = http.createServer(app);
 const io = new Server(server, {
   cors: {
-    origin: "http://localhost:3000",
+    origin: ["http://localhost:3000", "http://192.168.37.187:3000"],
     methods: ["GET", "POST"],
   },
+  transports: ["websocket", "polling"],
 });
 
 // 取得檔案URL
@@ -71,25 +73,56 @@ app.use("/auth", authRoutes);
 app.use("/profile", memberProfile);
 app.use("/api/comment", comment);
 app.use("/cart", cart);
-//app.use("/uploads", express.static("public/uploads"));
+app.use("/chat", chat);
+app.use("/ecpay-test-only", ecpayTestOnly);
+// app.use("/uploads", express.static("public/uploads"));
 
-// socket.io : 當有新用戶連接時
-// io.on('connection', (socket) => {
-//   console.log('A user connected: ' + socket.id);
+// socket.io
+const users = {};
 
-//   // 處理訊息接收
-//   socket.on('send_message', (message) => {
-//     console.log('Message received: ', message);
+io.on("connection", (socket) => {
+  console.log("A user connected: " + socket.id);
 
-//     // 廣播訊息(給所有連接的用戶，除發送者外)
-//     socket.broadcast.emit('receive_message', message);
-//   });
+  // 註冊用戶
+  socket.on("register", (user_id) => {
+    users[user_id] = socket.id;
+    console.log(`User ${user_id} connected with socket ID: ${socket.id}`);
 
-//   // 用戶斷線
-//   socket.on('disconnect', () => {
-//     console.log('User disconnected');
-//   });
-// });
+    // 廣播當前在線用戶列表
+    io.emit("online_users", Object.keys(users));
+  });
+
+  // 發送訊息
+  socket.on("send_message", async (data) => {
+    const { sender_user_id, receiver_user_id, message, conversation_id } = data;
+
+    // 傳送訊息給接收者
+    const receiverSocketId = users[receiver_user_id];
+    if (receiverSocketId) {
+      io.to(receiverSocketId).emit("receive_message", {
+        sender_user_id,
+        message,
+        sent_at: new Date(),
+      });
+    } else {
+      console.log(`User ${receiver_user_id} is not online.`);
+    }
+  });
+
+  // 當用戶斷線時，移除對應的 user_id
+  socket.on("disconnect", () => {
+    console.log("User disconnected: " + socket.id);
+    for (const [user_id, socketId] of Object.entries(users)) {
+      if (socketId === socket.id) {
+        delete users[user_id];
+        console.log(`User ${user_id} has been removed.`);
+        break;
+      }
+    }
+    // 廣播最新的在線用戶列表
+    io.emit("online_users", Object.keys(users));
+  });
+});
 
 // 測試路由
 app.get("/test", async (req, res) => {
@@ -107,7 +140,7 @@ app.get("/test", async (req, res) => {
 
 //************放靜態內容資料夾的位置************
 app.use(express.static("public"));
-app.use('/img', express.static('public/img'));
+app.use("/img", express.static("public/img"));
 //*************  404 頁面要在所有的路由後面  *************
 app.use((req, res) => {
   //   res.status(404).send("<h1>走錯路了</h1>");

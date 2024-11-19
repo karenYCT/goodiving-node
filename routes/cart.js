@@ -2,11 +2,12 @@ import express from "express";
 import db from "../utils/connect-sql.js";
 import axios from "axios";
 import { generateSignature } from "../utils/linepay.js";
+import authMiddleware from "../middlewares/authMiddleware.js";
+
 const router = express.Router();
 const channelId = process.env.channel_id;
 const channelSecret = process.env.channel_secret;
 const linePayAPIUrl = process.env.linepay_api_url;
-
 // 新增產品到購物車
 router.post("/add", async (req, res) => {
   const { variant_id, user_id } = req.body;
@@ -136,7 +137,7 @@ router.put("/updateQuantity", async (req, res) => {
 });
 
 // 刪除購物車商品
-router.delete("/delete", async (req, res) => {
+router.delete("/decrease", async (req, res) => {
   const { vid } = req.body;
 
   if (!vid) {
@@ -144,17 +145,44 @@ router.delete("/delete", async (req, res) => {
   }
 
   try {
-    // 刪除購物車商品的 SQL 查詢
-    const sql = "DELETE FROM cart_list WHERE product_variant_id = ?";
-    const [result] = await db.execute(sql, [vid]);
+    // 先檢查商品是否存在以及目前數量
+    const checkSql =
+      "SELECT quantity FROM cart_list WHERE product_variant_id = ?";
+    const [items] = await db.execute(checkSql, [vid]);
 
-    if (result.affectedRows === 0) {
+    if (items.length === 0) {
       return res.status(404).json({ message: "Cart item not found" });
     }
 
-    res.status(200).json({ message: "Cart item deleted successfully" });
+    const currentQuantity = items[0].quantity;
+
+    if (currentQuantity === 1) {
+      // 如果數量為 1，直接刪除該商品
+      const deleteSql = "DELETE FROM cart_list WHERE product_variant_id = ?";
+      await db.execute(deleteSql, [vid]);
+
+      return res.status(200).json({
+        message: "Cart item deleted successfully",
+        removed: true, // 標記該商品已被完全移除
+      });
+    } else {
+      // 數量大於 1，將數量減 1
+      const updateSql =
+        "UPDATE cart_list SET quantity = quantity - 1 WHERE product_variant_id = ?";
+      const [result] = await db.execute(updateSql, [vid]);
+
+      if (result.affectedRows === 0) {
+        return res.status(500).json({ message: "Failed to update quantity" });
+      }
+
+      return res.status(200).json({
+        message: "Quantity decreased successfully",
+        removed: false, // 標記商品仍然存在
+        newQuantity: currentQuantity - 1,
+      });
+    }
   } catch (error) {
-    console.error("Error deleting cart item:", error);
+    console.error("Error updating cart item:", error);
     res.status(500).json({ message: "Internal server error" });
   }
 });
@@ -302,7 +330,7 @@ router.post("/checkout/rollback", async (req, res) => {
   }
 });
 
-// 讀取訂單(用JWT middleware驗證)
+// 讀取訂單
 router.get("/checkout", async (req, res) => {
   const user_id = req.headers["x-user-id"];
   const connection = await db.getConnection();
@@ -343,6 +371,41 @@ router.get("/checkout", async (req, res) => {
     res.status(500).json({ message: "伺服器錯誤，請稍後再試" });
   } finally {
     connection.release();
+  }
+});
+
+// 讀取使用者資料
+router.get("/checkout/user", async (req, res) => {
+  const user_id = req.headers["x-user-id"];
+  if (!user_id) {
+    return res.status(401).json({ message: "未授權" });
+  }
+  try {
+    const [rows] = await db.execute(
+      "SELECT user_email email, user_full_name name, user_phone_number phone, user_city, user_district, user_address FROM user WHERE user_id = ?",
+      [user_id]
+    );
+    if (rows.length === 0) {
+      return res.status(404).json({ message: "找不到用戶" });
+    }
+    const user = rows[0];
+    const result = {
+      name: user.name,
+      email: user.email,
+      phone: user.phone,
+      address:
+        user.user_city && user.user_district && user.user_address
+          ? (user.user_city + user.user_district + user.user_address).replace(
+              /\s+/g,
+              ""
+            )
+          : "地址資料不完整，請手動輸入",
+    };
+
+    res.status(200).json(result);
+  } catch (error) {
+    console.error("查詢用戶資料失敗:", error);
+    res.status(500).json({ message: "伺服器錯誤，請稍後再試" });
   }
 });
 
@@ -507,9 +570,10 @@ router.get("/checkout/linepay/confirm", async (req, res) => {
   }
 });
 
-// 訂單完成頁(用JWT middleware驗證)
-router.get("/complete", async (req, res) => {
+// 訂單完成頁 (用jwt驗證)
+router.get("/complete", authMiddleware, async (req, res) => {
   const orderId = req.query.orderId;
+  const user_id = req.auth.user_id;
   try {
     const [orders] = await db.execute(
       `SELECT
@@ -520,10 +584,11 @@ router.get("/complete", async (req, res) => {
         v.size,
         v.color
       FROM order_items oi
+      JOIN order_list o ON oi.order_id = o.order_id
       JOIN product_variants v ON oi.product_variant_id = v.product_variant_id
       JOIN product_list p ON v.product_id = p.product_id
-      WHERE oi.order_id = ?`,
-      [orderId]
+      WHERE oi.order_id = ? AND o.user_id = ?`,
+      [orderId, user_id]
     );
 
     if (orders.length === 0) {
