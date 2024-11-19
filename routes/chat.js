@@ -144,4 +144,71 @@ router.get("/user-name", async (req, res) => {
   }
 });
 
+router.get("/recent-contacts/:user_id", async (req, res) => {
+  const { user_id } = req.params;
+
+  try {
+    const sql = `
+  SELECT DISTINCT 
+    CASE 
+      WHEN sender_user_id = ? THEN receiver_user_id
+      ELSE sender_user_id
+    END AS contact_id,
+    MAX(sent_at) AS last_chat_time
+  FROM messages
+  WHERE sender_user_id = ? OR receiver_user_id = ?
+  GROUP BY contact_id
+  ORDER BY last_chat_time DESC
+`;
+
+    const [contacts] = await db.query(sql, [user_id, user_id, user_id]);
+    res.json({
+      success: true,
+      contacts,
+    });
+  } catch (error) {
+    console.log(error);
+    res.status(500).json({
+      success: false,
+      error: "伺服器錯誤，無法獲取最近聊天對象。",
+    });
+  }
+});
+
+router.post("/user-details", async (req, res) => {
+  console.log("接收到的 req.body:", req.body); // 檢查請求資料
+  const { user_ids } = req.body; // 接收來自前端的 user_id 陣列
+
+  // 檢查是否傳入了 user_ids 並且是陣列
+  if (!Array.isArray(user_ids) || user_ids.length === 0) {
+    return res.status(400).json({
+      success: false,
+      error: "請提供一個包含 user_id 的陣列",
+    });
+  }
+
+  try {
+    // 構造 SQL 查詢語句，使用 IN 運算符
+    const sql = `
+      SELECT user_id, user_full_name, user_email
+      FROM user
+      WHERE user_id IN (?)
+    `;
+
+    const [results] = await db.query(sql, [user_ids]);
+
+    // 返回查詢結果
+    res.json({
+      success: true,
+      users: results, // 返回查詢到的用戶資料陣列
+    });
+  } catch (error) {
+    console.error("Error fetching user details:", error);
+    res.status(500).json({
+      success: false,
+      error: "伺服器錯誤，無法獲取用戶資料。",
+    });
+  }
+});
+
 export default router;

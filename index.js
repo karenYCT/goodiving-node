@@ -81,7 +81,7 @@ app.use("/cart", cart);
 app.use("/chat", chat);
 // app.use("/uploads", express.static("public/uploads"));
 
-// socket.io : 當有新用戶連接時
+// socket.io
 const users = {};
 
 io.on("connection", (socket) => {
@@ -92,35 +92,39 @@ io.on("connection", (socket) => {
     users[user_id] = socket.id;
     console.log(`User ${user_id} connected with socket ID: ${socket.id}`);
 
-    // 發送訊息
-    socket.on("send_message", async (data) => {
-      const { sender_user_id, receiver_user_id, message, conversation_id } =
-        data;
+    // 廣播當前在線用戶列表
+    io.emit("online_users", Object.keys(users));
+  });
 
-      // 傳送訊息給接收者
-      const receiverSocketId = users[receiver_user_id];
-      if (receiverSocketId) {
-        io.to(receiverSocketId).emit("receive_message", {
-          sender_user_id,
-          message,
-          sent_at: new Date(),
-        });
-      } else {
-        console.log(`User ${receiver_user_id} is not online.`);
-      }
-    });
+  // 發送訊息
+  socket.on("send_message", async (data) => {
+    const { sender_user_id, receiver_user_id, message, conversation_id } = data;
 
-    // 當用戶斷線時，移除對應的 user_id
-    socket.on("disconnect", () => {
-      console.log("User disconnected: " + socket.id);
-      for (const [user_id, socketId] of Object.entries(users)) {
-        if (socketId === socket.id) {
-          delete users[user_id];
-          console.log(`User ${user_id} has been removed.`);
-          break;
-        }
+    // 傳送訊息給接收者
+    const receiverSocketId = users[receiver_user_id];
+    if (receiverSocketId) {
+      io.to(receiverSocketId).emit("receive_message", {
+        sender_user_id,
+        message,
+        sent_at: new Date(),
+      });
+    } else {
+      console.log(`User ${receiver_user_id} is not online.`);
+    }
+  });
+
+  // 當用戶斷線時，移除對應的 user_id
+  socket.on("disconnect", () => {
+    console.log("User disconnected: " + socket.id);
+    for (const [user_id, socketId] of Object.entries(users)) {
+      if (socketId === socket.id) {
+        delete users[user_id];
+        console.log(`User ${user_id} has been removed.`);
+        break;
       }
-    });
+    }
+    // 廣播最新的在線用戶列表
+    io.emit("online_users", Object.keys(users));
   });
 });
 

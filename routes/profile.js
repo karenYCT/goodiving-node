@@ -187,4 +187,74 @@ router.put(
   }
 );
 
+// 讀取潛水日誌
+router.get("/logs", async (req, res) => {
+  try {
+    const { region_id, user_id } = req.query; // 新增 user_id 參數
+    console.log("收到的篩選參數:", { region_id, user_id });
+
+    let sql = `
+      SELECT 
+        l.log_id,
+        l.site_id, 
+        l.date,
+        l.max_depth,
+        l.bottom_time,
+        l.water_temp,
+        l.visi_id,
+        l.log_exp,
+        l.is_privacy,
+        l.created_at,
+        s.site_name,
+        s.region_id,
+        sr.region_name,
+        m.method_name,
+        m.method_id,
+        v.visi_name AS visibility,
+        u.user_full_name
+      FROM log l
+      LEFT JOIN site_info s ON l.site_id = s.site_id
+      LEFT JOIN site_region sr ON s.region_id = sr.region_id
+      LEFT JOIN method m ON l.method_id = m.method_id
+      LEFT JOIN visibility v ON l.visi_id = v.visi_id
+      LEFT JOIN user u ON l.user_id = u.user_id
+      WHERE l.is_draft = 0
+    `;
+    const params = [];
+
+    if (region_id && region_id !== "all") {
+      sql += " AND s.region_id = ?";
+      params.push(region_id);
+    }
+
+    if (user_id) {
+      sql += " AND l.user_id = ?";
+      params.push(user_id); // 篩選指定會員的日誌
+    }
+
+    sql += ` ORDER BY l.created_at DESC`;
+    console.log("獲取日誌列表的SQL:", sql, "參數:", params);
+
+    const [logs] = await db.query(sql, params);
+    console.log("獲取日誌列表的結果:", logs);
+
+    const logsWithImages = await Promise.all(
+      logs.map(async (log) => {
+        const [images] = await db.query(
+          `SELECT img_id, img_url, is_main 
+          FROM log_img 
+          WHERE log_id = ?`,
+          [log.log_id]
+        );
+        return { ...log, images };
+      })
+    );
+
+    res.json(logsWithImages);
+  } catch (error) {
+    console.error("獲取日誌列表失敗:", error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 export default router;
