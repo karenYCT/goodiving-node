@@ -9,7 +9,12 @@ const extMap = {
 };
 
 const fileFilter = (req, file, cb) => {
-  cb(null, !!extMap[file.mimetype]);
+  // 檢查檔案類型
+  if (!extMap[file.mimetype]) {
+    cb(new Error('不支援的檔案格式'), false);
+    return;
+  }
+  cb(null, true);
 };
 
 const storage = multer.diskStorage({
@@ -22,4 +27,16 @@ const storage = multer.diskStorage({
   },
 });
 
-export default multer({ fileFilter, storage });
+// 新增加的：設定 multer 選項
+const upload = multer({
+  storage,
+  fileFilter,
+  limits: {
+    fileSize: 10 * 1024 * 1024, // 設定為 10MB
+    files: 3 // 最多 3 個檔案
+  }
+});
+
+// 匯出一個包裝過的 middleware
+export default upload;
+// export default multer({ fileFilter, storage });

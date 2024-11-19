@@ -22,7 +22,13 @@ const authMiddleware = (req, res, next) => {
     console.log('解碼後的資料:', decoded);
 
     // 將解析後的用戶資訊附加到 request 物件
-    req.user = decoded;
+    req.auth = {
+      user_id: decoded.user_id,
+      user_full_name: decoded.user_full_name,
+      role_id: decoded.role_id,
+      iat: decoded.iat
+    };
+ 
     next();
   } catch (error) {
     if (error.name === 'TokenExpiredError') {
