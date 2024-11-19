@@ -16,6 +16,7 @@ import { fileURLToPath } from "url";
 import http from "http";
 import { Server } from "socket.io";
 import chat from "./routes/chat.js";
+import ecpayTestOnly from "./routes/ecpay-test-only.js";
 
 const app = express();
 const server = http.createServer(app);
@@ -73,6 +74,7 @@ app.use("/profile", memberProfile);
 app.use("/api/comment", comment);
 app.use("/cart", cart);
 app.use("/chat", chat);
+app.use("/ecpay-test-only", ecpayTestOnly);
 // app.use("/uploads", express.static("public/uploads"));
 
 // socket.io

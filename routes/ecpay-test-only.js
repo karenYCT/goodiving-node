@@ -21,7 +21,9 @@ router.get('/', function (req, res, next) {
   const TradeDesc = '線上付款'
   const ItemName = '課程預訂'
   const ReturnURL = 'https://www.ecpay.com.tw'
-  const OrderResultURL = 'http://localhost:3000/lesson/:round_id/booking/complete?order_id=:order_id' //前端成功頁面
+  const round_id = req.query.round_id
+  const order_id = req.query.order_id
+  const OrderResultURL = `http://localhost:3000/lesson/${round_id}/booking/complete?order_id=${order_id}` //前端成功頁面
   const ChoosePayment = 'ALL'
 
   ////////////////////////以下參數不用改////////////////////////
