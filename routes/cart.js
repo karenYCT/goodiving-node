@@ -573,7 +573,7 @@ router.get("/checkout/linepay/confirm", async (req, res) => {
 // 訂單完成頁 (用jwt驗證)
 router.get("/complete", authMiddleware, async (req, res) => {
   const orderId = req.query.orderId;
-  const user_id = req.user.user_id;
+  const user_id = req.auth.user_id;
   try {
     const [orders] = await db.execute(
       `SELECT
