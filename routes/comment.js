@@ -52,7 +52,7 @@ app.post('/blog/:blogId', authMiddleware, async function (req, res) {
   try{
     const { blogId } = req.params;
     const { content } = req.body;
-    const userId = req.user.user_id;
+    const userId = req.auth.user_id;
 
     // 檢查文章是否存在
     const checkBlogSql = 'SELECT id FROM blog WHERE id = ?';

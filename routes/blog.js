@@ -35,7 +35,7 @@ app.get('/', async function (req, res) {
 app.post('/', authMiddleware, upload.none(), async function (req, res) {  // 設定路由為新增文章
   try {
     const { title: name, content, category } = req.body;  // 從請求的 body 中獲取標題、內容、分類
-    const userId = req.user.user_id
+    const userId = req.auth.user_id
 
     if (!name || !content || !category) {
       // 如果缺少標題、內容或分類，回傳 400 錯誤
