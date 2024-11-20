@@ -3,6 +3,7 @@ import db from "../utils/connect-sql.js";
 import axios from "axios";
 import { generateSignature } from "../utils/linepay.js";
 import authMiddleware from "../middlewares/authMiddleware.js";
+import { v4 as uuidv4 } from "uuid";
 
 const router = express.Router();
 const channelId = process.env.channel_id;
@@ -426,9 +427,10 @@ router.patch("/checkout", async (req, res) => {
   const connection = await db.getConnection();
   try {
     // 1.更新訂單資訊
+    const linepay_uuid = uuidv4();
     const [result] = await db.execute(
       `UPDATE order_list 
-       SET shipping_method = ?, shipping_address = ?, payment_method = ?, recipient_name = ?, recipient_email = ?, recipient_phone = ?
+       SET shipping_method = ?, shipping_address = ?, payment_method = ?, recipient_name = ?, recipient_email = ?, recipient_phone = ?, linepay_uuid = ?
        WHERE order_id = ?`,
       [
         shipping_method,
@@ -437,6 +439,7 @@ router.patch("/checkout", async (req, res) => {
         recipient_name,
         recipient_email,
         recipient_phone,
+        linepay_uuid,
         orderId,
       ]
     );
@@ -450,7 +453,7 @@ router.patch("/checkout", async (req, res) => {
     const requestBody = {
       amount: totalPrice + deliveryFee,
       currency: "TWD",
-      orderId: orderId,
+      orderId: linepay_uuid,
       packages: [
         {
           id: "test1",
@@ -511,7 +514,13 @@ router.get("/checkout/linepay/confirm", async (req, res) => {
   try {
     // 向DB確認訂單金額與支付金額是否一致
     const [order] = await db.execute(
-      `SELECT * FROM order_items WHERE order_id = ?`,
+      `SELECT *
+      FROM order_items
+      WHERE order_id = (
+      SELECT order_id
+      FROM order_list
+      WHERE linepay_uuid = ?
+    );`,
       [orderId]
     );
 
@@ -548,7 +557,7 @@ router.get("/checkout/linepay/confirm", async (req, res) => {
     if (response.data.returnCode === "0000") {
       // 支付成功，更新資料庫的 is_paid = true
       await db.execute(
-        "UPDATE order_list SET is_paid = true WHERE order_id = ?",
+        "UPDATE order_list SET is_paid = true WHERE linepay_uuid = ?",
         [orderId]
       );
 
@@ -587,7 +596,7 @@ router.get("/complete", authMiddleware, async (req, res) => {
       JOIN order_list o ON oi.order_id = o.order_id
       JOIN product_variants v ON oi.product_variant_id = v.product_variant_id
       JOIN product_list p ON v.product_id = p.product_id
-      WHERE oi.order_id = ? AND o.user_id = ?`,
+      WHERE o.linepay_uuid = ? AND o.user_id = ?`,
       [orderId, user_id]
     );
 
@@ -596,7 +605,7 @@ router.get("/complete", authMiddleware, async (req, res) => {
     }
 
     const [info] = await db.execute(
-      `SELECT payment_method, shipping_method, shipping_address FROM order_list WHERE order_id = ?`,
+      `SELECT payment_method, shipping_method, shipping_address FROM order_list WHERE linepay_uuid = ?`,
       [orderId]
     );
     const { payment_method, shipping_method, shipping_address } = info[0];
