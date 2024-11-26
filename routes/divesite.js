@@ -42,6 +42,8 @@ router.get("/all", async (req, res) => {
     SELECT 
       si.site_id,
       si.site_name,
+      si.x_position,
+      si.y_position,
       si.max_depth,
       si.region_id,
       si.created_at,
